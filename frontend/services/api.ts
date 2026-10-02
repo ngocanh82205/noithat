@@ -515,12 +515,12 @@ export const productService = {
     return result as ApiResponse<{ product: ApiProduct; related_products: ApiProduct[] }>;
   },
 
-  async addReview(productId: number, data: { customer_name: string; rating: number; title?: string; comment: string }): Promise<ApiResponse<ApiReview>> {
+  async addReview(productId: number, data: { customer_name: string; rating: number; title?: string; comment: string }): Promise<ApiResponse<ApiReview> & { coins_awarded?: number }> {
     const result = await request<ApiReview>(`/products/${productId}/reviews`, {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return result as ApiResponse<ApiReview>;
+    return result as ApiResponse<ApiReview> & { coins_awarded?: number };
   },
 };
 
@@ -595,6 +595,25 @@ export const orderService = {
       body: JSON.stringify({ reason }),
     });
     return result as ApiResponse<ApiOrder>;
+  },
+};
+
+// 5b. Lucky Wheel (server quyết định giải thưởng, 1 lượt/ngày)
+export type LuckyWheelSpinResult = {
+  segment_index: number;
+  coins_won: number;
+  coins: number;
+};
+
+export const rewardService = {
+  async getSpinStatus(): Promise<ApiResponse<{ can_spin: boolean; coins: number }>> {
+    const result = await request<{ can_spin: boolean; coins: number }>("/rewards/spin", { cache: "no-store" });
+    return result as ApiResponse<{ can_spin: boolean; coins: number }>;
+  },
+
+  async spin(): Promise<ApiResponse<LuckyWheelSpinResult>> {
+    const result = await request<LuckyWheelSpinResult>("/rewards/spin", { method: "POST" });
+    return result as ApiResponse<LuckyWheelSpinResult>;
   },
 };
 

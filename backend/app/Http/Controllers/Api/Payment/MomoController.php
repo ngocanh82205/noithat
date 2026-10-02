@@ -199,14 +199,24 @@ class MomoController extends Controller
             return response()->json(['resultCode' => 1, 'message' => 'Order not found']);
         }
 
+        // IPN trùng / đến trễ: đơn đã thanh toán thì không ghi đè (tránh bị chuyển thành "failed")
+        if ($order->payment_status === 'paid') {
+            return response()->json(['resultCode' => 0, 'message' => 'Order already paid']);
+        }
+
         // Chỉ cập nhật khi thanh toán thành công (resultCode == 0)
         if ((int) $data['resultCode'] === 0) {
-            $order->update([
+            $order->update(array_merge([
                 'payment_status' => 'paid',
                 'momo_trans_id' => $data['transId'] ?? null,
                 'momo_response_time' => $data['responseTime'] ?? null,
                 'momo_pay_type' => $data['payType'] ?? null,
-            ]);
+            ],
+                // Giống VNPAY: đơn đã thu tiền -> "đã xác nhận"; đơn đã hủy thì giữ nguyên để admin hoàn tiền
+                in_array($order->order_status, [Order::STATUS_PENDING, Order::STATUS_PROCESSING], true)
+                    ? ['order_status' => Order::STATUS_CONFIRMED]
+                    : []
+            ));
 
             Log::info('MoMo IPN payment success', [
                 'order_id' => $order->id,

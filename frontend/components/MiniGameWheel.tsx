@@ -2,64 +2,77 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gift, X, Sparkles, Trophy, Truck, Clock, AlertCircle } from "lucide-react";
+import { Gift, X, Sparkles, Trophy, Coins, Clock, AlertCircle } from "lucide-react";
 import { useStore } from "./StoreContext";
+import { rewardService } from "@/services/api";
 
-// 8 Segments: Alternating between Freeship and Chúc bạn may mắn
+// 8 ô — thứ tự & giải thưởng phải khớp LuckyWheelController::SEGMENTS ở backend.
+// Server quyết định ô trúng; frontend chỉ quay tới đúng ô đó.
 const WHEEL_SEGMENTS = [
-  { id: 0, label: "Chúc Bạn May Mắn", isWin: false, color: "#2C2C2C" },
-  { id: 1, label: "🎁 FREESHIP VIP", isWin: true, code: "FREESHIPVIP", color: "#D4AF37" },
-  { id: 2, label: "Chúc Bạn May Mắn", isWin: false, color: "#3E2723" },
-  { id: 3, label: "Chúc Bạn May Mắn", isWin: false, color: "#1A1A1A" },
-  { id: 4, label: "🎁 FREESHIP VIP", isWin: true, code: "FREESHIPVIP", color: "#2E7D32" },
-  { id: 5, label: "Chúc Bạn May Mắn", isWin: false, color: "#242424" },
-  { id: 6, label: "Chúc Bạn May Mắn", isWin: false, color: "#4A2E18" },
-  { id: 7, label: "Chúc Bạn May Mắn", isWin: false, color: "#181818" },
+  { id: 0, label: "MAY MẮN", coins: 0, color: "#2C2C2C" },
+  { id: 1, label: "+10 XU", coins: 10, color: "#D4AF37" },
+  { id: 2, label: "+20 XU", coins: 20, color: "#3E2723" },
+  { id: 3, label: "MAY MẮN", coins: 0, color: "#1A1A1A" },
+  { id: 4, label: "+50 XU", coins: 50, color: "#2E7D32" },
+  { id: 5, label: "+10 XU", coins: 10, color: "#242424" },
+  { id: 6, label: "+100 XU", coins: 100, color: "#4A2E18" },
+  { id: 7, label: "+200 XU", coins: 200, color: "#181818" },
 ];
 
+const SPIN_DURATION_MS = 4200;
+
 export default function MiniGameWheel() {
-  const { isWheelOpen, closeWheel, applyVoucherCode } = useStore();
+  const { isWheelOpen, closeWheel, isAuthenticated, openAuth, refreshProfile } = useStore();
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [wonPrize, setWonPrize] = useState<any>(null);
+  const [wonPrize, setWonPrize] = useState<(typeof WHEEL_SEGMENTS)[number] | null>(null);
   const [hasSpunToday, setHasSpunToday] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // Check 1-spin-per-day limit on mount and whenever modal opens
+  // Lượt quay trong ngày do server quản lý (theo tài khoản)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-      const lastSpinDate = localStorage.getItem("gs_last_spin_date");
-      if (lastSpinDate === today) {
-        setHasSpunToday(true);
-      } else {
-        setHasSpunToday(false);
-      }
+    if (!isWheelOpen) return;
+    setErrorMsg("");
+    if (!isAuthenticated) {
+      setHasSpunToday(false);
+      return;
     }
-  }, [isWheelOpen]);
+    rewardService
+      .getSpinStatus()
+      .then((res) => {
+        if (res.success && res.data) setHasSpunToday(!res.data.can_spin);
+      })
+      .catch(() => {});
+  }, [isWheelOpen, isAuthenticated]);
 
-  const handleSpin = () => {
+  const handleSpin = async () => {
     if (spinning || hasSpunToday) return;
+
+    if (!isAuthenticated) {
+      closeWheel();
+      openAuth("login");
+      return;
+    }
 
     setSpinning(true);
     setWonPrize(null);
+    setErrorMsg("");
 
-    // Probability Algorithm:
-    // 80% chance: "Chúc bạn may mắn lần sau"
-    // 20% chance: "FREESHIP Đơn Hàng"
-    const rand = Math.random() * 100;
-    const willWinFreeship = rand >= 80; // 20% chance of winning
-
-    let selectedSegmentIndex = 0;
-    if (willWinFreeship) {
-      // Pick one of the winning segments [1, 4]
-      const winIndices = [1, 4];
-      selectedSegmentIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
-    } else {
-      // Pick one of the non-winning segments [0, 2, 3, 5, 6, 7] (80% probability)
-      const loseIndices = [0, 2, 3, 5, 6, 7];
-      selectedSegmentIndex = loseIndices[Math.floor(Math.random() * loseIndices.length)];
+    let res;
+    try {
+      res = await rewardService.spin();
+    } catch {
+      res = null;
     }
 
+    if (!res || !res.success || !res.data) {
+      setSpinning(false);
+      if (res && (res as any).status === 429) setHasSpunToday(true);
+      setErrorMsg(res?.message || "Không thể quay thưởng lúc này. Vui lòng thử lại sau.");
+      return;
+    }
+
+    const selectedSegmentIndex = res.data.segment_index;
     const numSegments = WHEEL_SEGMENTS.length; // 8
     const segmentAngle = 360 / numSegments; // 45 deg
 
@@ -73,20 +86,11 @@ export default function MiniGameWheel() {
 
     setTimeout(() => {
       setSpinning(false);
-      const prize = WHEEL_SEGMENTS[selectedSegmentIndex];
-      setWonPrize(prize);
-
-      // Save today's date in localStorage to enforce 1-spin-per-day limit
-      if (typeof window !== "undefined") {
-        const today = new Date().toISOString().split("T")[0];
-        localStorage.setItem("gs_last_spin_date", today);
-        setHasSpunToday(true);
-      }
-
-      if (prize.isWin && prize.code) {
-        applyVoucherCode(prize.code);
-      }
-    }, 4200);
+      setWonPrize(WHEEL_SEGMENTS[selectedSegmentIndex] ?? WHEEL_SEGMENTS[0]);
+      setHasSpunToday(true);
+      // Đồng bộ số dư xu từ server
+      refreshProfile();
+    }, SPIN_DURATION_MS);
   };
 
   if (!isWheelOpen) return null;
@@ -129,7 +133,7 @@ export default function MiniGameWheel() {
           </p>
           <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-800 font-medium mt-1">
             <Clock size={13} />
-            <span>Tỷ lệ trúng Mã Freeship VIP toàn quốc</span>
+            <span>Trúng tới 200 GS Coins (1 Xu = 1.000₫)</span>
           </div>
 
           {/* Wheel Graphic */}
@@ -157,10 +161,10 @@ export default function MiniGameWheel() {
                       className="absolute top-1/2 left-1/2 w-28 h-6 -translate-y-1/2 origin-left text-[10px] font-serif font-bold tracking-wider text-beige text-right pr-3"
                       style={{
                         transform: `rotate(${angle}deg)`,
-                        color: seg.isWin ? "#FFE57F" : "#D4D4D4",
+                        color: seg.coins > 0 ? "#FFE57F" : "#D4D4D4",
                       }}
                     >
-                      {seg.isWin ? "FREESHIP" : "MAY MẮN"}
+                      {seg.label}
                     </div>
                   );
                 })}
@@ -179,21 +183,21 @@ export default function MiniGameWheel() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`p-4 rounded-2xl my-4 text-xs space-y-1 border ${
-                wonPrize.isWin
+                wonPrize.coins > 0
                   ? "bg-green-50 border-green-300 text-green-900"
                   : "bg-espresso/5 border-espresso/15 text-espresso"
               }`}
             >
-              {wonPrize.isWin ? (
+              {wonPrize.coins > 0 ? (
                 <>
                   <div className="flex items-center justify-center gap-1.5 font-serif text-base text-gold font-bold">
                     <Sparkles size={18} /> Chúc Mừng Quý Khách!
                   </div>
                   <p className="font-semibold text-sm flex items-center justify-center gap-1.5 text-green-800">
-                    <Truck size={15} /> Bạn đã trúng Mã Miễn Phí Vận Chuyển (FREESHIPVIP)!
+                    <Coins size={15} /> Bạn đã trúng {wonPrize.coins} GS Coins!
                   </p>
                   <p className="text-[11px] text-green-700">
-                    Mã đã được tự động kích hoạt vào giỏ hàng của bạn.
+                    Xu đã được cộng vào ví, dùng để giảm trực tiếp khi thanh toán.
                   </p>
                 </>
               ) : (
@@ -209,8 +213,15 @@ export default function MiniGameWheel() {
             </motion.div>
           )}
 
+          {errorMsg && (
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl my-3 text-xs flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-600 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
           {/* Daily Limit Warning if already spun */}
-          {hasSpunToday && !wonPrize && (
+          {hasSpunToday && !wonPrize && !errorMsg && (
             <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl my-3 text-xs flex items-center gap-2">
               <AlertCircle size={16} className="text-amber-600 shrink-0" />
               <span>Hôm nay bạn đã sử dụng hết lượt quay. Lượt quay mới sẽ mở lại vào ngày mai!</span>
@@ -223,7 +234,9 @@ export default function MiniGameWheel() {
             disabled={spinning || hasSpunToday}
             className="w-full py-4 bg-espresso text-champagne text-xs font-serif tracking-widest2 uppercase hover:bg-gold hover:text-charcoal transition-all duration-300 font-bold rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
-            {spinning
+            {!isAuthenticated
+              ? "Đăng Nhập Để Quay Thưởng"
+              : spinning
               ? "Đang Quay Thưởng..."
               : hasSpunToday
               ? "Hôm Nay Đã Quay (Hẹn Gặp Lại Ngày Mai)"

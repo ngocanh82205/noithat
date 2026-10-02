@@ -18,7 +18,8 @@ class AdminOrderController extends Controller
         $query = Order::with(['user', 'items.product', 'items.variant'])->latest();
 
         if ($request->filled('status') && $request->status !== 'all') {
-            $query->where('order_status', $request->status);
+            // Hỗ trợ lọc nhiều trạng thái: ?status=pending,processing
+            $query->whereIn('order_status', array_filter(explode(',', (string) $request->status)));
         }
 
         if ($request->filled('payment_status') && $request->payment_status !== 'all') {
@@ -82,6 +83,16 @@ class AdminOrderController extends Controller
         $oldStatus = $order->order_status;
         $newStatus = $validated['status'];
 
+        // Đơn đã hủy / hoàn tiền là trạng thái cuối (kho đã trả lại); chỉ cho phép hủy -> hoàn tiền
+        $isTerminal = in_array($oldStatus, [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED], true);
+        $allowedFromTerminal = $oldStatus === Order::STATUS_CANCELLED && $newStatus === Order::STATUS_REFUNDED;
+        if ($isTerminal && $newStatus !== $oldStatus && !$allowedFromTerminal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn hàng đã ' . ($oldStatus === Order::STATUS_CANCELLED ? 'hủy' : 'hoàn tiền') . ', không thể chuyển sang trạng thái khác.',
+            ], 422);
+        }
+
         // Handle cancellation - restore stock
         if ($newStatus === Order::STATUS_CANCELLED && $oldStatus !== Order::STATUS_CANCELLED) {
             if (!$order->canCancel()) {
@@ -106,6 +117,22 @@ class AdminOrderController extends Controller
             ]);
         }
 
+        // Hoàn tiền: trả kho/voucher/xu đã dùng, thu hồi xu tích lũy & hoa hồng
+        if ($newStatus === Order::STATUS_REFUNDED && $oldStatus !== Order::STATUS_REFUNDED) {
+            if (!$order->refund($validated['notes'] ?? '')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể hoàn tiền đơn hàng. Vui lòng thử lại.',
+                ], 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã hoàn tiền đơn hàng #' . $order->order_number . ' và hoàn kho thành công!',
+                'data' => $order->fresh(),
+            ]);
+        }
+
         DB::transaction(function () use ($order, $oldStatus, $newStatus, $validated) {
             $order->order_status = $newStatus;
             if (!empty($validated['payment_status'])) {
@@ -118,8 +145,6 @@ class AdminOrderController extends Controller
             // Thưởng tích lũy & hoa hồng gắn với vòng đời đơn hàng
             if ($newStatus === Order::STATUS_COMPLETED && $oldStatus !== Order::STATUS_COMPLETED) {
                 $order->applyCompletionRewards();
-            } elseif ($newStatus === Order::STATUS_REFUNDED && $oldStatus !== Order::STATUS_REFUNDED) {
-                $order->revokeCompletionRewards();
             }
 
             $order->save();

@@ -17,18 +17,33 @@ import {
   User,
   X,
   CreditCard,
+  RotateCcw,
 } from "lucide-react";
 import { adminService, ApiOrder } from "@/services/api";
 import { formatPrice } from "@/lib/products";
 
 const STATUS_TABS = [
   { key: "all", label: "Tất Cả" },
-  { key: "pending", label: "Chờ Xác Nhận" },
+  { key: "pending,processing", label: "Chờ Xác Nhận" },
   { key: "confirmed", label: "Đã Xác Nhận" },
   { key: "shipping", label: "Đang Giao" },
   { key: "completed", label: "Hoàn Thành" },
   { key: "cancelled", label: "Đã Hủy" },
+  { key: "refunded", label: "Đã Hoàn Tiền" },
 ];
+
+// Backend trả về `order_status`; `status` chỉ còn để tương thích dữ liệu cũ
+const orderStatusOf = (order: ApiOrder) => order.order_status || order.status;
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Chờ Xác Nhận",
+  processing: "Chờ Xác Nhận",
+  confirmed: "Đã Xác Nhận",
+  shipping: "Đang Giao",
+  completed: "Hoàn Thành",
+  cancelled: "Đã Hủy",
+  refunded: "Đã Hoàn Tiền",
+};
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
@@ -77,8 +92,11 @@ export default function AdminOrdersPage() {
       });
 
       if (res.success && res.data) {
-        setSelectedOrder(res.data);
+        // Giữ lại items/user đã tải (response cập nhật trạng thái có thể không kèm quan hệ)
+        setSelectedOrder({ ...selectedOrder, ...res.data, items: res.data.items ?? selectedOrder.items, user: res.data.user ?? selectedOrder.user });
         loadOrders();
+      } else {
+        alert(res.message || "Không thể cập nhật trạng thái đơn hàng");
       }
     } catch (err: any) {
       alert(err.message || "Không thể cập nhật trạng thái đơn hàng");
@@ -86,6 +104,10 @@ export default function AdminOrdersPage() {
       setUpdating(false);
     }
   };
+
+  const isTerminal = selectedOrder
+    ? ["cancelled", "refunded"].includes(orderStatusOf(selectedOrder))
+    : false;
 
   return (
     <div className="space-y-6">
@@ -187,18 +209,20 @@ export default function AdminOrdersPage() {
                     <td className="p-4">
                       <span
                         className={`px-2.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wider ${
-                          order.status === "completed"
+                          orderStatusOf(order) === "completed"
                             ? "bg-green-900/40 text-green-400"
-                            : order.status === "shipping"
+                            : orderStatusOf(order) === "shipping"
                             ? "bg-blue-900/40 text-blue-400"
-                            : order.status === "confirmed"
+                            : orderStatusOf(order) === "confirmed"
                             ? "bg-purple-900/40 text-purple-400"
-                            : order.status === "cancelled"
+                            : orderStatusOf(order) === "cancelled"
                             ? "bg-red-900/40 text-red-400"
+                            : orderStatusOf(order) === "refunded"
+                            ? "bg-gray-700/60 text-gray-300"
                             : "bg-yellow-900/40 text-yellow-400"
                         }`}
                       >
-                        {order.status}
+                        {STATUS_LABELS[orderStatusOf(order)] || orderStatusOf(order)}
                       </span>
                     </td>
                     <td className="p-4 text-right">
@@ -250,31 +274,44 @@ export default function AdminOrdersPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => handleUpdateStatus("confirmed")}
-                  disabled={updating || selectedOrder.status === "confirmed"}
+                  disabled={updating || isTerminal || orderStatusOf(selectedOrder) === "confirmed"}
                   className="px-3.5 py-2 bg-purple-900/40 hover:bg-purple-800 text-purple-200 text-xs rounded font-medium flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <CheckCircle2 size={14} /> 1. Xác Nhận Đơn
                 </button>
                 <button
                   onClick={() => handleUpdateStatus("shipping")}
-                  disabled={updating || selectedOrder.status === "shipping"}
+                  disabled={updating || isTerminal || orderStatusOf(selectedOrder) === "shipping"}
                   className="px-3.5 py-2 bg-blue-900/40 hover:bg-blue-800 text-blue-200 text-xs rounded font-medium flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <Truck size={14} /> 2. Đang Giao Hàng
                 </button>
                 <button
                   onClick={() => handleUpdateStatus("completed", "paid")}
-                  disabled={updating || selectedOrder.status === "completed"}
+                  disabled={updating || isTerminal || orderStatusOf(selectedOrder) === "completed"}
                   className="px-3.5 py-2 bg-green-900/40 hover:bg-green-800 text-green-200 text-xs rounded font-medium flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <CheckCircle2 size={14} /> 3. Hoàn Thành &amp; Đã Thu Tiền
                 </button>
                 <button
-                  onClick={() => handleUpdateStatus("cancelled")}
-                  disabled={updating || selectedOrder.status === "cancelled"}
+                  onClick={() => {
+                    if (confirm("Hủy đơn này? Kho, voucher và xu đã dùng sẽ được hoàn lại.")) handleUpdateStatus("cancelled");
+                  }}
+                  disabled={updating || isTerminal || !["pending", "processing", "confirmed"].includes(orderStatusOf(selectedOrder))}
                   className="px-3.5 py-2 bg-red-900/40 hover:bg-red-800 text-red-200 text-xs rounded font-medium flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <XCircle size={14} /> Hủy Đơn
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm("Xác nhận đã hoàn tiền cho khách? Kho/voucher/xu sẽ được hoàn lại, xu tích lũy và hoa hồng bị thu hồi.")) {
+                      handleUpdateStatus("refunded", "refunded");
+                    }
+                  }}
+                  disabled={updating || orderStatusOf(selectedOrder) === "refunded"}
+                  className="px-3.5 py-2 bg-gray-700/50 hover:bg-gray-600 text-gray-200 text-xs rounded font-medium flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  <RotateCcw size={14} /> Hoàn Tiền
                 </button>
               </div>
             </div>

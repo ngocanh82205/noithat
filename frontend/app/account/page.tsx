@@ -612,14 +612,14 @@ export default function AccountPage() {
                         <span className="text-2xl">🎡</span>
                         <h4 className="text-sm font-bold text-espresso">Vòng Quay Hàng Ngày</h4>
                         <p className="text-xs text-espresso/60">
-                          Mỗi ngày đăng nhập nhận 1 lượt quay may mắn miễn phí trúng tới 200 GS Coins hoặc Voucher 500k.
+                          Mỗi ngày đăng nhập nhận 1 lượt quay may mắn miễn phí, trúng tới 200 GS Coins cộng thẳng vào ví.
                         </p>
                       </div>
                       <div className="bg-white/80 p-5 rounded-xl border border-espresso/10 space-y-2">
                         <span className="text-2xl">✍️</span>
                         <h4 className="text-sm font-bold text-espresso">Đánh Giá Sản Phẩm</h4>
                         <p className="text-xs text-espresso/60">
-                          Nhận 50 GS Coins khi viết review và đăng ảnh/video không gian thực tế sau khi nhận hàng.
+                          Nhận 50 GS Coins cho đánh giá đầu tiên của mỗi sản phẩm bạn đã mua và nhận hàng thành công.
                         </p>
                       </div>
                       <div className="bg-white/80 p-5 rounded-xl border border-espresso/10 space-y-2">

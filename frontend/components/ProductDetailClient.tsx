@@ -27,7 +27,7 @@ import ShoppableRoomBundle from "./ShoppableRoomBundle";
 import RealCustomerReviews from "./RealCustomerReviews";
 
 export default function ProductDetailClient({ product }: { product: any }) {
-  const { wishlist, toggleWishlist, addToCart, addToCompare, comparisonList } = useStore();
+  const { wishlist, toggleWishlist, addToCart, addToCompare, comparisonList, refreshProfile } = useStore();
   const prodId = String(product.id);
   const isWished = wishlist.includes(prodId);
   const isCompared = comparisonList.some((p) => String(p.id) === prodId);
@@ -86,6 +86,7 @@ export default function ProductDetailClient({ product }: { product: any }) {
   const [reviewComment, setReviewComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [reviewCoinsAwarded, setReviewCoinsAwarded] = useState(0);
 
   // FAQs state
   const [faqs, setFaqs] = useState<ApiFaq[]>([]);
@@ -141,12 +142,18 @@ export default function ProductDetailClient({ product }: { product: any }) {
       if (res.success && res.data) {
         setReviews([res.data, ...reviews]);
         setReviewSuccess(true);
+        const coinsAwarded = res.coins_awarded ?? 0;
+        setReviewCoinsAwarded(coinsAwarded);
+        if (coinsAwarded > 0) {
+          refreshProfile();
+        }
         setReviewName("");
         setReviewComment("");
         setTimeout(() => {
           setReviewFormOpen(false);
           setReviewSuccess(false);
-        }, 1500);
+          setReviewCoinsAwarded(0);
+        }, coinsAwarded > 0 ? 3000 : 1500);
       }
     } catch (e) {
       setReviews([
@@ -671,6 +678,7 @@ export default function ProductDetailClient({ product }: { product: any }) {
                 {reviewSuccess && (
                   <p className="p-3 bg-green-50 text-green-700 text-xs">
                     Cảm ơn bạn đã gửi đánh giá!
+                    {reviewCoinsAwarded > 0 && ` Bạn nhận được ${reviewCoinsAwarded} GS Coins.`}
                   </p>
                 )}
 

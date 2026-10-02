@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Review;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class ReviewController extends Controller
 {
+    public const REVIEW_REWARD_COINS = 50;
+
     // Gửi đánh giá cho sản phẩm
     public function store(Request $request, int $productId): JsonResponse
     {
@@ -43,6 +46,17 @@ class ReviewController extends Controller
             ->whereHas('items', fn ($q) => $q->where('product_id', $product->id))
             ->exists();
 
+        // Thưởng xu cho đánh giá đầu tiên của khách đã mua & nhận hàng sản phẩm này
+        $coinsAwarded = 0;
+        if ($isVerifiedPurchase) {
+            $alreadyReviewed = Review::where('product_id', $product->id)
+                ->where('user_id', $user->id)
+                ->exists();
+            if (!$alreadyReviewed) {
+                $coinsAwarded = self::REVIEW_REWARD_COINS;
+            }
+        }
+
         $review = Review::create([
             'product_id' => $product->id,
             'user_id' => $user?->id,
@@ -62,10 +76,17 @@ class ReviewController extends Controller
             'rating_count' => $countReviews,
         ]);
 
+        if ($coinsAwarded > 0) {
+            User::where('id', $user->id)->increment('coins', $coinsAwarded);
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Cảm ơn bạn đã đánh giá sản phẩm!',
+            'message' => $coinsAwarded > 0
+                ? "Cảm ơn bạn đã đánh giá sản phẩm! Bạn nhận được {$coinsAwarded} GS Coins."
+                : 'Cảm ơn bạn đã đánh giá sản phẩm!',
             'data' => $review,
+            'coins_awarded' => $coinsAwarded,
         ], 201);
     }
 }

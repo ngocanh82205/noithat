@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Payment\MomoController;
 use App\Http\Controllers\Api\Payment\VnpayController;
 use App\Http\Controllers\Api\Product\ProductController;
 use App\Http\Controllers\Api\Review\ReviewController;
+use App\Http\Controllers\Api\Reward\LuckyWheelController;
 use App\Http\Controllers\Api\Voucher\VoucherController;
 use App\Http\Controllers\Api\Affiliate\AffiliateController;
 use App\Http\Controllers\Api\Vendor\VendorController;
@@ -145,6 +146,12 @@ Route::prefix('visual-search')->group(function () {
     Route::get('/', [VisualSearchController::class, 'search']);
     Route::post('/', [VisualSearchController::class, 'search']);
     Route::post('/analyze-room', [VisualSearchController::class, 'analyzeRoom']);
+});
+
+// --- 12b. Lucky Wheel (GS Coins, 1 lượt/ngày, server quyết định giải thưởng) ---
+Route::prefix('rewards')->middleware('auth:sanctum')->group(function () {
+    Route::get('/spin', [LuckyWheelController::class, 'status']);
+    Route::post('/spin', [LuckyWheelController::class, 'spin'])->middleware('throttle:10,1');
 });
 
 // --- 13. Affiliate Marketing & CTV Commissions ---

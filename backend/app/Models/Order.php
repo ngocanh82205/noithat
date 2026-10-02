@@ -142,6 +142,88 @@ class Order extends Model
             ->update(['status' => 'cancelled']);
     }
 
+    /**
+     * Trả lại mọi thứ đơn hàng đã giữ khi đặt: tồn kho, suất Flash Sale, xu đã dùng, lượt voucher.
+     * Dùng chung cho hủy đơn và hoàn tiền; chỉ gọi một lần cho mỗi đơn (đơn đã hủy thì đã trả rồi).
+     */
+    private function releaseReservedResources(): void
+    {
+        // Restore stock for each item
+        foreach ($this->items as $item) {
+            if ($item->variant_id) {
+                \App\Models\ProductVariant::where('id', $item->variant_id)
+                    ->increment('stock_quantity', $item->quantity);
+            } else {
+                \App\Models\Product::where('id', $item->product_id)
+                    ->increment('stock_quantity', $item->quantity);
+            }
+        }
+
+        // Hoàn lại suất Flash Sale đã giữ (OrderController tăng sold_count cho mọi sản phẩm thuộc
+        // Flash Sale đang chạy tại thời điểm đặt hàng)
+        $flashSale = \App\Models\FlashSale::where('start_time', '<=', $this->created_at)
+            ->where('end_time', '>=', $this->created_at)
+            ->first();
+        if ($flashSale) {
+            foreach ($this->items as $item) {
+                \App\Models\FlashSaleProduct::where('flash_sale_id', $flashSale->id)
+                    ->where('product_id', $item->product_id)
+                    ->where('sold_count', '>=', $item->quantity)
+                    ->decrement('sold_count', $item->quantity);
+            }
+        }
+
+        // Restore user coins if used
+        if ($this->coins_used > 0 && $this->user_id) {
+            $this->user()->increment('coins', $this->coins_used);
+        }
+
+        // Restore voucher usage if applicable
+        $voucherUsage = \App\Models\VoucherUsage::where('order_id', $this->id)->first();
+        if ($voucherUsage) {
+            $voucherUsage->delete();
+            \App\Models\Voucher::where('id', $voucherUsage->voucher_id)->decrement('used_count');
+        }
+    }
+
+    public function canRefund(): bool
+    {
+        return $this->order_status !== self::STATUS_REFUNDED;
+    }
+
+    /**
+     * Hoàn tiền: trả lại tài nguyên đã giữ (nếu đơn chưa bị hủy trước đó), thu hồi xu tích lũy & hoa hồng,
+     * và đánh dấu trạng thái thanh toán là "refunded".
+     */
+    public function refund(string $reason = ''): bool
+    {
+        if (!$this->canRefund()) {
+            return false;
+        }
+
+        DB::beginTransaction();
+        try {
+            if ($this->order_status !== self::STATUS_CANCELLED) {
+                $this->releaseReservedResources();
+            }
+
+            $this->revokeCompletionRewards();
+
+            $this->order_status = self::STATUS_REFUNDED;
+            $this->payment_status = 'refunded';
+            if ($reason !== '') {
+                $this->notes = $this->notes . "\nHoàn tiền: {$reason}";
+            }
+            $this->save();
+
+            DB::commit();
+            return true;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return false;
+        }
+    }
+
     public function cancel(string $reason = ''): bool
     {
         if (!$this->canCancel()) {
@@ -150,42 +232,7 @@ class Order extends Model
 
         DB::beginTransaction();
         try {
-            // Restore stock for each item
-            foreach ($this->items as $item) {
-                if ($item->variant_id) {
-                    \App\Models\ProductVariant::where('id', $item->variant_id)
-                        ->increment('stock_quantity', $item->quantity);
-                } else {
-                    \App\Models\Product::where('id', $item->product_id)
-                        ->increment('stock_quantity', $item->quantity);
-                }
-            }
-
-            // Hoàn lại suất Flash Sale đã giữ (OrderController tăng sold_count cho mọi sản phẩm thuộc
-            // Flash Sale đang chạy tại thời điểm đặt hàng)
-            $flashSale = \App\Models\FlashSale::where('start_time', '<=', $this->created_at)
-                ->where('end_time', '>=', $this->created_at)
-                ->first();
-            if ($flashSale) {
-                foreach ($this->items as $item) {
-                    \App\Models\FlashSaleProduct::where('flash_sale_id', $flashSale->id)
-                        ->where('product_id', $item->product_id)
-                        ->where('sold_count', '>=', $item->quantity)
-                        ->decrement('sold_count', $item->quantity);
-                }
-            }
-
-            // Restore user coins if used
-            if ($this->coins_used > 0 && $this->user_id) {
-                $this->user()->increment('coins', $this->coins_used);
-            }
-
-            // Restore voucher usage if applicable
-            $voucherUsage = \App\Models\VoucherUsage::where('order_id', $this->id)->first();
-            if ($voucherUsage) {
-                $voucherUsage->delete();
-                \App\Models\Voucher::where('id', $voucherUsage->voucher_id)->decrement('used_count');
-            }
+            $this->releaseReservedResources();
 
             // Update affiliate commission status if exists
             \App\Models\AffiliateCommission::where('order_id', $this->id)

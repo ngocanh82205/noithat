@@ -74,33 +74,83 @@ class AdminWithdrawalController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
         try {
-            // Mark withdrawal as approved
-            $withdrawal->update([
-                'status' => 'approved',
-                'admin_notes' => $request->admin_notes,
-                'processed_by' => $request->user()->id,
-                'processed_at' => now(),
-            ]);
+            $result = DB::transaction(function () use ($request, $withdrawal) {
+                // Khóa lại yêu cầu để 2 admin không duyệt trùng cùng lúc
+                $withdrawal = WithdrawalRequest::where('id', $withdrawal->id)->lockForUpdate()->first();
+                if ($withdrawal->status !== 'pending') {
+                    return ['status' => 422, 'message' => 'Yêu cầu này đã được xử lý.'];
+                }
 
-            // Update affiliate commissions status from approved to paid
-            AffiliateCommission::where('user_id', $withdrawal->user_id)
-                ->where('status', 'approved')
-                ->orderBy('created_at')
-                ->each(function ($commission) use ($withdrawal) {
-                    $commission->update(['status' => 'paid']);
-                });
+                $commissions = AffiliateCommission::where('user_id', $withdrawal->user_id)
+                    ->where('status', 'approved')
+                    ->orderBy('created_at')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
 
-            DB::commit();
+                $amount = round((float) $withdrawal->amount, 2);
+                $available = round((float) $commissions->sum('commission_amount'), 2);
+                if ($amount > $available) {
+                    return [
+                        'status' => 422,
+                        'message' => 'Số dư hoa hồng khả dụng hiện tại (' . number_format($available, 0, ',', '.') . ' VNĐ) không đủ để duyệt yêu cầu này.',
+                    ];
+                }
+
+                // Chỉ chuyển "paid" đúng số tiền rút (cũ trước). Khoản cuối nếu dư sẽ được tách đôi:
+                // phần đã chi -> paid, phần còn lại giữ "approved" để rút lần sau.
+                $remaining = $amount;
+                foreach ($commissions as $commission) {
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                    $value = round((float) $commission->commission_amount, 2);
+
+                    if ($value <= $remaining) {
+                        $commission->update(['status' => 'paid']);
+                        $remaining = round($remaining - $value, 2);
+                        continue;
+                    }
+
+                    AffiliateCommission::create([
+                        'user_id' => $commission->user_id,
+                        'order_id' => $commission->order_id,
+                        'order_amount' => $commission->order_amount,
+                        'commission_rate' => $commission->commission_rate,
+                        'commission_amount' => round($value - $remaining, 2),
+                        'status' => 'approved',
+                    ]);
+                    $commission->update([
+                        'commission_amount' => $remaining,
+                        'status' => 'paid',
+                    ]);
+                    $remaining = 0;
+                }
+
+                $withdrawal->update([
+                    'status' => 'approved',
+                    'admin_notes' => $request->admin_notes,
+                    'processed_by' => $request->user()->id,
+                    'processed_at' => now(),
+                ]);
+
+                return ['status' => 200, 'withdrawal' => $withdrawal];
+            });
+
+            if ($result['status'] !== 200) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'],
+                ], $result['status']);
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Đã duyệt yêu cầu rút tiền thành công.',
-                'data' => $withdrawal->fresh(),
+                'data' => $result['withdrawal']->fresh(),
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'success' => false,
                 'message' => 'Không thể duyệt yêu cầu: ' . $e->getMessage(),

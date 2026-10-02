@@ -195,4 +195,41 @@ class MomoPaymentTest extends TestCase
                 ],
             ]);
     }
+    /** @test */
+    public function successful_ipn_confirms_processing_order()
+    {
+        $this->order->update(['order_status' => Order::STATUS_PROCESSING]);
+        $data = $this->getBaseIpnData();
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->postJson('/api/momo/ipn', $data)->assertJson(['resultCode' => 0]);
+
+        $this->assertEquals(Order::STATUS_CONFIRMED, $this->order->fresh()->order_status);
+    }
+
+    /** @test */
+    public function successful_ipn_does_not_reopen_cancelled_order()
+    {
+        $this->order->update(['order_status' => Order::STATUS_CANCELLED]);
+        $data = $this->getBaseIpnData();
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->postJson('/api/momo/ipn', $data)->assertJson(['resultCode' => 0]);
+
+        $order = $this->order->fresh();
+        $this->assertEquals('paid', $order->payment_status);
+        $this->assertEquals(Order::STATUS_CANCELLED, $order->order_status);
+    }
+
+    /** @test */
+    public function late_failed_ipn_does_not_overwrite_paid_order()
+    {
+        $this->order->update(['payment_status' => 'paid']);
+        $data = $this->getBaseIpnData(['resultCode' => '9000', 'message' => 'Failed']);
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->postJson('/api/momo/ipn', $data)->assertJson(['resultCode' => 0]);
+
+        $this->assertEquals('paid', $this->order->fresh()->payment_status);
+    }
 }
