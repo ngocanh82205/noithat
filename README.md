@@ -51,50 +51,66 @@ Duandonoithat/
 ## 2. Hướng dẫn khởi chạy dự án
 
 ### Yêu cầu môi trường
-- PHP >= 8.2 & MySQL (XAMPP / MariaDB)
+- PHP >= 8.2 + Composer, MySQL (XAMPP / MariaDB) — hoặc SQLite nếu không muốn cài MySQL
 - Node.js >= 18.x & npm
 
 ---
 
 ### Bước 1: Khởi chạy Backend (Laravel API)
 
-1. Mở terminal và di chuyển vào thư mục `backend`:
-   ```bash
-   cd c:\xampp\htdocs\Duandonoithat\backend
-   ```
-2. Cấu hình file `.env` (Đảm bảo MySQL đang bật trong XAMPP):
-   ```env
-   DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_DATABASE=gs_luxury
-   DB_USERNAME=root
-   DB_PASSWORD=Giangson@05
-   ```
-3. Chạy Migration và nạp dữ liệu mẫu:
-   ```bash
-   php artisan migrate:fresh --seed
-   ```
-4. Khởi động Backend API Server:
-   ```bash
-   php artisan serve --port=8000
-   ```
-   > Backend API sẵn sàng tại: `http://127.0.0.1:8000/api`
+```bash
+cd backend
+composer install
+cp .env.example .env          # Windows: copy .env.example .env
+php artisan key:generate
+```
+
+Mở `backend/.env` và điền thông tin MySQL (tạo sẵn database `gs_luxury` trong phpMyAdmin):
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=gs_luxury
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+> Không có MySQL: xoá các dòng `DB_*` ở trên, chỉ để `DB_CONNECTION=sqlite`, rồi tạo file rỗng `backend/database/database.sqlite`.
+
+Tạo bảng + dữ liệu mẫu, rồi chạy server:
+
+```bash
+php artisan migrate:fresh --seed
+php artisan serve --port=8000
+```
+
+> Backend API sẵn sàng tại: `http://127.0.0.1:8000/api`
+>
+> Đã có database từ trước và chỉ cập nhật code mới: chạy `php artisan migrate` (không `fresh`) để giữ dữ liệu.
 
 ---
 
 ### Bước 2: Khởi chạy Frontend (Next.js Storefront)
 
-1. Mở một cửa sổ terminal mới và di chuyển vào thư mục `frontend`:
-   ```bash
-   cd c:\xampp\htdocs\Duandonoithat\frontend
-   ```
-2. Khởi động môi trường phát triển:
-   ```bash
-   npm run dev
-   ```
-3. Mở trình duyệt và truy cập:
-   > **`http://localhost:3000`**
+Mở một cửa sổ terminal mới:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Mở trình duyệt: **`http://localhost:3000`**
+
+> Backend chạy ở địa chỉ khác `http://127.0.0.1:8000`: tạo `frontend/.env.local` từ `frontend/.env.example` và sửa `NEXT_PUBLIC_API_URL`.
+
+### Chạy test backend
+
+```bash
+cd backend
+php artisan test
+```
 
 ---
 
@@ -123,5 +139,9 @@ Duandonoithat/
 
 ## 4. Tài khoản quản trị & thử nghiệm
 
-- **Admin Account:** `admin@gsluxury.vn` / Mật khẩu: `Admin@123456`
-- **Customer Account:** `customer@gmail.com` / Mật khẩu: `Customer@123456`
+Tạo bởi `php artisan migrate:fresh --seed` (FurnitureSeeder):
+
+- **Admin:** `admin@gsluxury.vn` / Mật khẩu: `GsLuxury#2026!Secure` — đăng nhập tại `http://localhost:3000/admin`
+- **Khách hàng:** `customer@gmail.com` / Mật khẩu: `Customer@123456`
+
+> Đổi mật khẩu admin ngay sau khi triển khai thật.

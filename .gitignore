@@ -16,13 +16,20 @@ auth.json
 # Backend Laravel
 backend/.env
 backend/.env.*
+!backend/.env.example
 backend/vendor/
-backend/storage/logs/
-backend/storage/framework/cache/
-backend/storage/framework/sessions/
-backend/storage/framework/views/
+# Giữ cấu trúc thư mục Laravel cần để chạy (chỉ bỏ qua nội dung bên trong)
+backend/storage/logs/*
+!backend/storage/logs/.gitignore
+backend/storage/framework/cache/*
+!backend/storage/framework/cache/.gitignore
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitignore
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitignore
 backend/storage/app/public/
-backend/bootstrap/cache/
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitignore
 backend/database/*.sqlite*
 backend/docker/ca.pem
 

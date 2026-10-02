@@ -105,8 +105,9 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // Đã hủy / hoàn tiền / hoàn thành: không chuyển ngược được (chỉ còn Hoàn Tiền nếu hợp lệ) — khớp AdminOrderController
   const isTerminal = selectedOrder
-    ? ["cancelled", "refunded"].includes(orderStatusOf(selectedOrder))
+    ? ["cancelled", "refunded", "completed"].includes(orderStatusOf(selectedOrder))
     : false;
 
   return (

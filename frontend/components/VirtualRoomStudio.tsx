@@ -49,7 +49,7 @@ const SOFA_OPTIONS: FurnitureOption[] = [
     category: "Sofa",
     material: "Vải nhung Bỉ chống bám bụi, đệm mút lông vũ",
     price: 34000000,
-    image: "/images/products/nordic-sofa.jpg",
+    image: "/images/sofa-3.jpg",
   },
   {
     id: "sofa_cream",
@@ -57,7 +57,7 @@ const SOFA_OPTIONS: FurnitureOption[] = [
     category: "Sofa",
     material: "Da Nappa cao cấp nhập khẩu, đường may thủ công",
     price: 42000000,
-    image: "/images/products/lounge-chair.jpg",
+    image: "/images/sofa-2.jpg",
     badge: "Mẫu mới 2026",
   },
 ];
@@ -77,7 +77,7 @@ const TABLE_OPTIONS: FurnitureOption[] = [
     category: "Bàn trà",
     material: "Gỗ óc chó FAS tự nhiên, sơn phủ dầu lau dưỡng gỗ",
     price: 22000000,
-    image: "/images/products/walnut-bed.jpg",
+    image: "/images/coffee-table-2.jpg",
     badge: "Gỗ tự nhiên",
   },
   {
@@ -86,7 +86,7 @@ const TABLE_OPTIONS: FurnitureOption[] = [
     category: "Bàn trà",
     material: "Kính cường lực 12mm, khung titan chống trầy",
     price: 16000000,
-    image: "/images/products/dining-table.jpg",
+    image: "/images/coffee-table-3.jpg",
   },
 ];
 
@@ -97,7 +97,7 @@ const LIGHT_OPTIONS: FurnitureOption[] = [
     category: "Đèn chiếu sáng",
     material: "Pha lê cao cấp K9, khung mạ vàng 24K",
     price: 28000000,
-    image: "/images/products/dining-table.jpg",
+    image: "/images/lamp-2.jpg",
     badge: "Hoàng gia",
   },
   {
@@ -222,7 +222,7 @@ export default function VirtualRoomStudio() {
                     cameraAngle === "sofa_close"
                       ? "/images/sofa-1.jpg"
                       : cameraAngle === "window"
-                        ? "/images/lookbook-dining.jpg"
+                        ? "/images/dining-table-2.jpg"
                         : "/images/hero-banner.jpg"
                   }
                   alt="3D Virtual Room Studio"

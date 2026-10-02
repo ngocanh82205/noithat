@@ -83,13 +83,24 @@ class AdminOrderController extends Controller
         $oldStatus = $order->order_status;
         $newStatus = $validated['status'];
 
-        // Đơn đã hủy / hoàn tiền là trạng thái cuối (kho đã trả lại); chỉ cho phép hủy -> hoàn tiền
-        $isTerminal = in_array($oldStatus, [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED], true);
-        $allowedFromTerminal = $oldStatus === Order::STATUS_CANCELLED && $newStatus === Order::STATUS_REFUNDED;
-        if ($isTerminal && $newStatus !== $oldStatus && !$allowedFromTerminal) {
+        // Trạng thái cuối:
+        // - Đã hủy / hoàn tiền: kho đã trả lại, chỉ cho phép hủy -> hoàn tiền
+        // - Hoàn thành: đã cộng xu tích lũy & mở hoa hồng, chỉ cho phép -> hoàn tiền
+        $allowedNext = [
+            Order::STATUS_CANCELLED => [Order::STATUS_REFUNDED],
+            Order::STATUS_REFUNDED => [],
+            Order::STATUS_COMPLETED => [Order::STATUS_REFUNDED],
+        ];
+        if (isset($allowedNext[$oldStatus]) && $newStatus !== $oldStatus && !in_array($newStatus, $allowedNext[$oldStatus], true)) {
+            $label = [
+                Order::STATUS_CANCELLED => 'đã hủy',
+                Order::STATUS_REFUNDED => 'đã hoàn tiền',
+                Order::STATUS_COMPLETED => 'đã hoàn thành',
+            ][$oldStatus];
             return response()->json([
                 'success' => false,
-                'message' => 'Đơn hàng đã ' . ($oldStatus === Order::STATUS_CANCELLED ? 'hủy' : 'hoàn tiền') . ', không thể chuyển sang trạng thái khác.',
+                'message' => "Đơn hàng {$label}, không thể chuyển sang trạng thái khác"
+                    . ($allowedNext[$oldStatus] ? ' (chỉ có thể hoàn tiền).' : '.'),
             ], 422);
         }
 

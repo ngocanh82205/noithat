@@ -107,10 +107,13 @@ class LoyaltyAndRewardsTest extends TestCase
         $this->assertEquals(50 + $expectedCoins, $this->user->fresh()->coins);
         $this->assertEquals($expectedCoins, $order->fresh()->coins_earned);
 
-        // Re-saving "completed" (e.g. after a status round-trip) must not award twice
+        // Đơn hoàn thành không thể chuyển ngược (tránh hoàn thành lại để nhận xu lần nữa)
         $this->actingAs($this->admin, 'sanctum')
             ->putJson("/api/admin/orders/{$order->id}/status", ['status' => 'shipping'])
-            ->assertOk();
+            ->assertStatus(422);
+        $this->assertEquals(Order::STATUS_COMPLETED, $order->fresh()->order_status);
+
+        // Lưu lại "completed" lần nữa không cộng xu thêm
         $this->actingAs($this->admin, 'sanctum')
             ->putJson("/api/admin/orders/{$order->id}/status", ['status' => 'completed'])
             ->assertOk();

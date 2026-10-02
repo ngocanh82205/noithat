@@ -590,7 +590,7 @@ export default function AdminDashboardPage() {
                     <Image
                       src={
                         product.images?.[0]?.image_url ||
-                        "/images/hero-1.webp"
+                        "/images/hero-banner.webp"
                       }
                       alt={product.name}
                       fill

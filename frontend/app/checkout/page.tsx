@@ -1017,7 +1017,7 @@ export default function CheckoutPage() {
                       <div key={`${item.product.id}-${index}`} className="flex gap-3 pt-3 first:pt-0">
                         <div className="relative w-16 h-16 bg-neutral-100 rounded-xl flex-shrink-0 overflow-hidden border border-neutral-200/60">
                           <Image
-                            src={item.product.image || "/images/placeholder.jpg"}
+                            src={item.product.image || "/images/sofa-1.jpg"}
                             alt={item.product.name}
                             fill
                             sizes="64px"
