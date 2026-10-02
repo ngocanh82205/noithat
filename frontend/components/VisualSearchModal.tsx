@@ -471,7 +471,7 @@ export default function VisualSearchModal() {
                   className="w-full py-3 bg-gradient-to-r from-espresso via-charcoal to-espresso hover:from-gold hover:via-gold-light hover:to-gold text-champagne hover:text-charcoal rounded-xl text-xs font-serif font-bold tracking-wider uppercase transition-all duration-300 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Sparkles size={15} />
-                  <span>{isScanning ? "AI Đang Phối Cảnh..." : "AI Tìm &amp; Phối Sản Phẩm Vào Phòng"}</span>
+                  <span>{isScanning ? "AI Đang Phối Cảnh..." : "AI Tìm & Phối Sản Phẩm Vào Phòng"}</span>
                 </button>
               </div>
 
