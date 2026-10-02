@@ -514,7 +514,14 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $reason = $request->input('reason', '');
+        if ($order->payment_status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn hàng đã thanh toán online. Vui lòng liên hệ CSKH GS Luxury để được hủy và hoàn tiền.',
+            ], 422);
+        }
+
+        $reason = (string) $request->input('reason', '');
 
         if ($order->cancel($reason)) {
             return response()->json([

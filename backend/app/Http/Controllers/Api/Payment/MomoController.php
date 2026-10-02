@@ -24,6 +24,8 @@ class MomoController extends Controller
         $order = Order::where('id', $request->order_id)
             ->where('payment_method', 'momo')
             ->where('payment_status', 'pending')
+            // Không cho thanh toán đơn đã hủy (kho đã hoàn lại)
+            ->whereNotIn('order_status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
             ->firstOrFail();
 
         $partnerCode = config('services.momo.partner_code') ?? env('MOMO_PARTNER_CODE');

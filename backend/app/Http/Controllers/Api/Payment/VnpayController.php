@@ -22,6 +22,8 @@ class VnpayController extends Controller
         $order = Order::where('id', $request->order_id)
             ->where('payment_method', 'vnpay')
             ->where('payment_status', 'pending')
+            // Không cho thanh toán đơn đã hủy (kho đã hoàn lại)
+            ->whereNotIn('order_status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
             ->firstOrFail();
 
         $vnp_TmnCode = config('services.vnpay.tmn_code') ?? env('VNPAY_TMN_CODE');
@@ -181,10 +183,11 @@ class VnpayController extends Controller
         ]);
 
         if ($vnp_ResponseCode == '00') {
-            $order->update([
-                'payment_status' => 'paid',
-                'order_status' => 'confirmed',
-            ]);
+            // Đơn đã hủy trước khi tiền về: chỉ ghi nhận đã thu tiền để admin hoàn tiền, không mở lại đơn
+            $order->update(array_merge(
+                ['payment_status' => 'paid'],
+                $order->order_status === Order::STATUS_CANCELLED ? [] : ['order_status' => Order::STATUS_CONFIRMED]
+            ));
 
             return response()->json([
                 'success' => true,
@@ -288,10 +291,11 @@ class VnpayController extends Controller
         ]);
 
         if ($vnp_ResponseCode == '00') {
-            $order->update([
-                'payment_status' => 'paid',
-                'order_status' => 'confirmed',
-            ]);
+            // Đơn đã hủy trước khi tiền về: chỉ ghi nhận đã thu tiền để admin hoàn tiền, không mở lại đơn
+            $order->update(array_merge(
+                ['payment_status' => 'paid'],
+                $order->order_status === Order::STATUS_CANCELLED ? [] : ['order_status' => Order::STATUS_CONFIRMED]
+            ));
         }
 
         return response()->json([

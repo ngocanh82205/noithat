@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AffiliateCommission;
+use App\Models\FlashSale;
+use App\Models\FlashSaleProduct;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Review;
@@ -225,5 +227,58 @@ class LoyaltyAndRewardsTest extends TestCase
         $this->actingAs($this->user, 'sanctum')
             ->postJson("/api/products/{$this->product->id}/reviews", $reviewPayload);
         $this->assertTrue((bool) Review::latest('id')->first()->is_verified_purchase);
+    }
+    /** @test */
+    public function customer_cannot_self_cancel_paid_order()
+    {
+        $order = $this->placeOrder(['payment_method' => 'vnpay']);
+        $order->update(['payment_status' => 'paid', 'order_status' => Order::STATUS_CONFIRMED]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/orders/{$order->order_number}/cancel")
+            ->assertStatus(422);
+
+        $this->assertEquals(Order::STATUS_CONFIRMED, $order->fresh()->order_status);
+        $this->assertEquals(9, $this->product->fresh()->stock_quantity);
+    }
+
+    /** @test */
+    public function cancelled_order_cannot_start_online_payment()
+    {
+        $order = $this->placeOrder(['payment_method' => 'vnpay']);
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/orders/{$order->order_number}/cancel")
+            ->assertOk();
+
+        $this->postJson('/api/vnpay/create-payment', ['order_id' => $order->id])->assertStatus(404);
+    }
+
+    /** @test */
+    public function cancelling_order_releases_flash_sale_quota()
+    {
+        $sale = FlashSale::create([
+            'name' => 'Flash',
+            'start_time' => now()->subHour(),
+            'end_time' => now()->addHour(),
+            'is_active' => true,
+        ]);
+        $fsp = FlashSaleProduct::create([
+            'flash_sale_id' => $sale->id,
+            'product_id' => $this->product->id,
+            'flash_price' => 8000000,
+            'stock_for_sale' => 5,
+            'sold_count' => 0,
+        ]);
+
+        $order = $this->placeOrder(['items' => [['product_id' => $this->product->id, 'quantity' => 2]]]);
+        $this->assertEquals(2, $fsp->fresh()->sold_count);
+        $this->assertEquals(16000000, $order->subtotal);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/orders/{$order->order_number}/cancel")
+            ->assertOk();
+
+        $this->assertEquals(0, $fsp->fresh()->sold_count);
+        $this->assertEquals(10, $this->product->fresh()->stock_quantity);
     }
 }

@@ -66,6 +66,7 @@ export default function CheckoutPage() {
     coinsDiscount,
     referralCode,
     openAuth,
+    refreshProfile,
   } = useStore();
 
   // State declarations - MUST be at top level for React hooks rules
@@ -447,6 +448,11 @@ export default function CheckoutPage() {
         }
         const order = res.data.order;
         const orderNumber = order.order_number;
+
+        // Xu đã bị trừ trên server -> cập nhật lại số dư hiển thị
+        if (order.coins_used) {
+          refreshProfile();
+        }
 
         // If payment method is MoMo, redirect to MoMo payUrl
         if (formData.payment_method === "momo") {

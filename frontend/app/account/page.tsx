@@ -479,7 +479,7 @@ export default function AccountPage() {
 
                               <div className="flex items-center gap-3">
                                 {getStatusBadge(order.order_status)}
-                                {CANCELLABLE_STATUSES.includes(order.order_status) && (
+                                {CANCELLABLE_STATUSES.includes(order.order_status) && order.payment_status !== "paid" && (
                                   <button
                                     onClick={() => handleCancelOrder(order.order_number)}
                                     disabled={cancellingOrder === order.order_number}

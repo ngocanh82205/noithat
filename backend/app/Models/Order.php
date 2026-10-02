@@ -161,6 +161,20 @@ class Order extends Model
                 }
             }
 
+            // Hoàn lại suất Flash Sale đã giữ (OrderController tăng sold_count cho mọi sản phẩm thuộc
+            // Flash Sale đang chạy tại thời điểm đặt hàng)
+            $flashSale = \App\Models\FlashSale::where('start_time', '<=', $this->created_at)
+                ->where('end_time', '>=', $this->created_at)
+                ->first();
+            if ($flashSale) {
+                foreach ($this->items as $item) {
+                    \App\Models\FlashSaleProduct::where('flash_sale_id', $flashSale->id)
+                        ->where('product_id', $item->product_id)
+                        ->where('sold_count', '>=', $item->quantity)
+                        ->decrement('sold_count', $item->quantity);
+                }
+            }
+
             // Restore user coins if used
             if ($this->coins_used > 0 && $this->user_id) {
                 $this->user()->increment('coins', $this->coins_used);

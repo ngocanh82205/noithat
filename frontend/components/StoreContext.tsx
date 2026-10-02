@@ -212,6 +212,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [wishlist]);
 
+  // Khi đã đăng nhập, số dư xu lấy từ server (nguồn duy nhất mà checkout sử dụng)
+  useEffect(() => {
+    if (user && typeof user.coins === "number") {
+      setUserCoins(user.coins);
+    }
+  }, [user]);
+
   // Sync coins
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -470,9 +477,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const coinsDiscount = useMemo(() => {
     if (!useCoins || userCoins <= 0) return 0;
     // 1 coin = 1,000 VND, cap at 20% of subtotal or total coins
-    const maxCoinDiscount = Math.floor(cartSubtotal * 0.2);
-    const coinsValue = userCoins * 1000;
-    return Math.min(coinsValue, maxCoinDiscount);
+    // Làm tròn theo số xu nguyên để khớp với cách server tính (OrderController)
+    const maxCoins = Math.floor((cartSubtotal * 0.2) / 1000);
+    return Math.min(userCoins, maxCoins) * 1000;
   }, [useCoins, userCoins, cartSubtotal]);
 
   const value: StoreContextValue = {
