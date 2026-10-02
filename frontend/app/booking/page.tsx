@@ -40,11 +40,17 @@ export default function BookingPage() {
 
     try {
       setLoading(true);
-      await consultationService.submit(formData);
-      setSuccess(true);
-    } catch (err: any) {
-      // Fallback
-      setSuccess(true);
+      setErrorMsg("");
+      const res = await consultationService.submit(formData);
+      if (res.success) {
+        setSuccess(true);
+      } else {
+        // Hiện lỗi thật thay vì báo thành công (trước đây lịch hẹn lỗi vẫn hiện "thành công")
+        const firstError = res.errors ? Object.values(res.errors).flat()[0] : null;
+        setErrorMsg(String(firstError || res.message || "Không thể gửi yêu cầu. Vui lòng thử lại."));
+      }
+    } catch {
+      setErrorMsg("Không kết nối được máy chủ. Vui lòng thử lại hoặc gọi hotline.");
     } finally {
       setLoading(false);
     }

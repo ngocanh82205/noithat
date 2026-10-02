@@ -46,6 +46,34 @@ import {
   GhnWard,
 } from "@/services/api";
 
+// Biểu phí dự phòng khi GHN không tính được — PHẢI khớp OrderController::getFallbackShippingFee() ở backend
+const FALLBACK_SHIPPING_METHODS: ShippingMethod[] = [
+  {
+    id: "standard",
+    name: "Vận chuyển Tiêu chuẩn (Phí tạm tính)",
+    description: "Xe thùng chuyên dụng chống va đập, bọc màng PE 4 lớp",
+    fee: 250000,
+    estimated_delivery: "2 - 4 ngày",
+    ghn_data: null,
+  },
+  {
+    id: "express",
+    name: "Giao Hàng Hỏa Tốc (Phí tạm tính)",
+    description: "Ưu tiên xếp xe xuất kho ngay lập tức, hẹn giờ chính xác",
+    fee: 500000,
+    estimated_delivery: "1 - 2 ngày",
+    ghn_data: null,
+  },
+  {
+    id: "install_pro",
+    name: "Giao & Lắp Đặt Chuyên Nghiệp",
+    description: "Đội kỹ thuật GS Luxury giao tận nơi, lắp ráp và cân chỉnh hoàn thiện",
+    fee: 300000,
+    estimated_delivery: "3 - 5 ngày",
+    ghn_data: null,
+  },
+];
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -94,6 +122,16 @@ export default function CheckoutPage() {
 
   // Shipping methods - chỉ dùng GHN API, không hardcode
   const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
+  // GHN không khả dụng (thiếu token / mất mạng): cho nhập địa chỉ tay và dùng biểu phí dự phòng của server
+  const [manualAddress, setManualAddress] = useState(false);
+
+  const enableManualAddress = () => {
+    setManualAddress(true);
+    setShippingError("Không kết nối được GHN, vui lòng nhập địa chỉ thủ công. Phí vận chuyển áp dụng biểu phí tiêu chuẩn của GS Luxury.");
+    setShippingMethods(FALLBACK_SHIPPING_METHODS);
+    setShippingFee(FALLBACK_SHIPPING_METHODS[0].fee);
+    setFormData((prev) => ({ ...prev, shipping_method: FALLBACK_SHIPPING_METHODS[0].id }));
+  };
 
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [calculatingShipping, setCalculatingShipping] = useState(false);
@@ -141,11 +179,17 @@ export default function CheckoutPage() {
 
   // Fetch GHN Provinces on mount
   useEffect(() => {
-    shippingService.getProvinces().then((res) => {
-      if (res.success && res.data) {
-        setProvinces(res.data);
-      }
-    });
+    shippingService
+      .getProvinces()
+      .then((res) => {
+        if (res.success && res.data && res.data.length > 0) {
+          setProvinces(res.data);
+        } else {
+          enableManualAddress();
+        }
+      })
+      .catch(() => enableManualAddress());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch Districts when Province changes
@@ -195,7 +239,7 @@ export default function CheckoutPage() {
     if (formData.shipping_district_id && formData.shipping_ward_code) {
       setCalculatingShipping(true);
       setShippingError("");
-      const FALLBACK_FEE = 150000; // Phí dự phòng cố định khi GHN không tính được - không bao giờ miễn phí
+      const FALLBACK_FEE = FALLBACK_SHIPPING_METHODS[0].fee; // khớp phí server tính khi GHN không trả phí
 
       shippingService
         .calculateBothServices({
@@ -333,7 +377,18 @@ export default function CheckoutPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+      // Lưu kèm TÊN địa danh (đơn hàng hiển thị tên, không phải ID GHN)
+      if (name === "shipping_province_id") {
+        next.shipping_city = provinces.find((p) => String(p.id) === value)?.name || "";
+      } else if (name === "shipping_district_id") {
+        next.shipping_district = districts.find((d) => String(d.id) === value)?.name || "";
+      } else if (name === "shipping_ward_code") {
+        next.shipping_ward = wards.find((w) => String(w.id) === value)?.name || "";
+      }
+      return next;
+    });
   };
 
   const handleSelectShippingMethod = (method: ShippingMethod) => {
@@ -385,7 +440,12 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!formData.shipping_province_id || !formData.shipping_district_id || !formData.shipping_ward_code) {
+    if (manualAddress) {
+      if (!formData.shipping_city.trim() || !formData.shipping_district.trim()) {
+        showToast({ type: "warning", title: "Thiếu địa chỉ", message: "Vui lòng nhập Tỉnh/Thành và Quận/Huyện." });
+        return;
+      }
+    } else if (!formData.shipping_province_id || !formData.shipping_district_id || !formData.shipping_ward_code) {
       showToast({ type: "warning", title: "Thiếu địa chỉ", message: "Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện, Phường/Xã." });
       return;
     }
@@ -666,8 +726,33 @@ export default function CheckoutPage() {
                   </div>
 
                   <div className="space-y-4.5">
+                    {/* Nhập tay khi GHN không khả dụng */}
+                    {manualAddress && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {[
+                          { name: "shipping_city", label: "Tỉnh / Thành Phố", placeholder: "Ví dụ: Hà Nội", required: true },
+                          { name: "shipping_district", label: "Quận / Huyện", placeholder: "Ví dụ: Cầu Giấy", required: true },
+                          { name: "shipping_ward", label: "Phường / Xã", placeholder: "Ví dụ: Dịch Vọng", required: false },
+                        ].map((f) => (
+                          <div key={f.name}>
+                            <label className="block text-xs font-medium text-neutral-700 mb-2 uppercase tracking-wider">
+                              {f.label} {f.required && <span className="text-red-500">*</span>}
+                            </label>
+                            <input
+                              type="text"
+                              name={f.name}
+                              placeholder={f.placeholder}
+                              value={(formData as any)[f.name]}
+                              onChange={handleChange}
+                              className="w-full h-11 bg-neutral-50/70 hover:bg-neutral-50 focus:bg-white border border-neutral-200 rounded-xl px-4 text-sm text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600 transition-all shadow-xs"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* 3 Selects: Tỉnh / Quận / Phường */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${manualAddress ? "hidden" : ""}`}>
                       <div>
                         <label className="block text-xs font-medium text-neutral-700 mb-2 uppercase tracking-wider">
                           Tỉnh / Thành Phố <span className="text-red-500">*</span>
@@ -1223,7 +1308,7 @@ export default function CheckoutPage() {
                     <button
                       type="button"
                       onClick={handleSubmitOrder}
-                      disabled={loading || (shippingMethods.length === 0 && !formData.shipping_province_id)}
+                      disabled={loading || (!manualAddress && shippingMethods.length === 0 && !formData.shipping_province_id)}
                       className="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-neutral-950 via-neutral-900 to-neutral-800 hover:from-amber-700 hover:via-amber-700 hover:to-amber-600 text-white font-medium text-sm transition-all duration-300 shadow-md hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between group"
                     >
                       {loading ? (

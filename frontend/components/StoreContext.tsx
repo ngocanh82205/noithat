@@ -139,6 +139,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isAuthOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  // Chỉ ghi ngược vào localStorage SAU khi đã đọc xong dữ liệu cũ. Nếu không, lần render đầu
+  // (cart = []) sẽ ghi đè giỏ hàng đã lưu — ở dev, React Strict Mode chạy effect 2 lần nên
+  // mỗi lần F5 là mất sạch giỏ hàng & wishlist.
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   // Load initial localStorage on mount
   useEffect(() => {
@@ -194,23 +198,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load store storage:", e);
       } finally {
         setIsAuthLoading(false);
+        setStorageLoaded(true);
       }
     }
   }, []);
 
   // Sync cart to localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (storageLoaded && typeof window !== "undefined") {
       localStorage.setItem("gs_cart", JSON.stringify(cart));
     }
-  }, [cart]);
+  }, [cart, storageLoaded]);
 
   // Sync wishlist to localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (storageLoaded && typeof window !== "undefined") {
       localStorage.setItem("gs_wishlist", JSON.stringify(wishlist));
     }
-  }, [wishlist]);
+  }, [wishlist, storageLoaded]);
 
   // Khi đã đăng nhập, số dư xu lấy từ server (nguồn duy nhất mà checkout sử dụng)
   useEffect(() => {
@@ -221,10 +226,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Sync coins
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (storageLoaded && typeof window !== "undefined") {
       localStorage.setItem("gs_coins", userCoins.toString());
     }
-  }, [userCoins]);
+  }, [userCoins, storageLoaded]);
 
   // Cart operations
   const addToCart = useCallback((product: any, variant?: any, quantity: number = 1) => {

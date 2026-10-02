@@ -132,7 +132,8 @@ class AdminAuthorizationTest extends TestCase
                 'slug' => 'new-product',
                 'sku' => 'NP-001',
                 'price' => 5000000,
-                'category_id' => 1,
+                // Tạo category thật thay vì giả định id = 1 (MySQL không reset auto-increment giữa các test)
+                'category_id' => \App\Models\Category::factory()->create()->id,
                 'status' => 'active',
             ]);
         $response->assertStatus(201);

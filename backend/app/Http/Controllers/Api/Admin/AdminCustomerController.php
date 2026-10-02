@@ -12,7 +12,8 @@ class AdminCustomerController extends Controller
     {
         $query = User::withCount('orders')
             ->withSum(['orders as total_spent' => function ($q) {
-                $q->where('status', '!=', 'cancelled');
+                // Cột trạng thái của orders là order_status (không có cột status)
+                $q->whereNotIn('order_status', ['cancelled', 'refunded']);
             }], 'total_amount')
             ->latest();
 

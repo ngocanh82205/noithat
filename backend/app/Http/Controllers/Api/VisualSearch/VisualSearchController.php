@@ -300,6 +300,89 @@ PROMPT;
     }
 
     /**
+     * Tách JSON từ phản hồi Gemini (có thể bọc trong ```json ... ``` hoặc kèm chữ thừa).
+     * Trả null nếu không hợp lệ -> caller tự rơi về nhánh rule-based.
+     */
+    protected function parseGeminiResponse(string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return null;
+        }
+
+        // Bỏ code fence markdown nếu có
+        if (preg_match('/```(?:json)?\s*(.*?)```/s', $text, $m)) {
+            $text = trim($m[1]);
+        }
+
+        // Lấy đoạn từ dấu { đầu tiên đến dấu } cuối cùng
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+        if ($start === false || $end === false || $end <= $start) {
+            return null;
+        }
+
+        $data = json_decode(substr($text, $start, $end - $start + 1), true);
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $data['product_ids'] = array_values(array_filter(
+            array_map('intval', (array) ($data['product_ids'] ?? [])),
+            fn ($id) => $id > 0
+        ));
+
+        return $data['product_ids'] ? $data : null;
+    }
+
+    /**
+     * Lý do gợi ý hiển thị cho khách (nhánh rule-based). Trước đây hàm này được gọi nhưng chưa từng
+     * được định nghĩa -> GET/POST /api/visual-search luôn trả 500.
+     */
+    protected function getMatchReason(Product $product, ?string $detectedCategory): string
+    {
+        $base = [
+            'sofa' => 'Phù hợp nhu cầu sofa / ghế thư giãn cho không gian sống',
+            'dining' => 'Phù hợp bộ bàn ăn cho phòng ăn gia đình',
+            'coffee_table' => 'Bàn trà / bàn bên tạo điểm nhấn trung tâm phòng khách',
+            'bedroom' => 'Phù hợp không gian phòng ngủ tĩnh tại, thư giãn',
+            'lighting' => 'Đèn trang trí tạo lớp ánh sáng ấm cho căn phòng',
+            'general' => 'Sản phẩm nổi bật được nhiều khách hàng lựa chọn',
+        ][$detectedCategory ?? 'general'] ?? 'Sản phẩm nổi bật được nhiều khách hàng lựa chọn';
+
+        $extras = [];
+        if ($product->material) {
+            $extras[] = 'chất liệu ' . mb_strtolower($product->material);
+        }
+        if ($product->is_bestseller) {
+            $extras[] = 'bán chạy';
+        } elseif ($product->is_featured) {
+            $extras[] = 'sản phẩm tiêu biểu';
+        }
+
+        return $extras ? $base . ' — ' . implode(', ', $extras) . '.' : $base . '.';
+    }
+
+    /**
+     * Tên hiển thị của loại phòng (dùng cho cả nhánh Gemini và rule-based).
+     */
+    protected function getRoomTypeLabel(?string $roomType): string
+    {
+        return [
+            'living' => 'Phòng khách',
+            'living_room' => 'Phòng khách',
+            'bedroom' => 'Phòng ngủ',
+            'master_bedroom' => 'Phòng ngủ master',
+            'dining' => 'Phòng ăn',
+            'dining_room' => 'Phòng ăn',
+            'kitchen' => 'Bếp',
+            'office' => 'Phòng làm việc',
+            'study' => 'Phòng làm việc',
+            'luxury_spatial' => 'Không gian sống cao cấp',
+        ][strtolower((string) $roomType)] ?? 'Không gian sống';
+    }
+
+    /**
      * AI Spatial Room Stylist & Staging Engine
      */
     public function analyzeRoom(Request $request): JsonResponse

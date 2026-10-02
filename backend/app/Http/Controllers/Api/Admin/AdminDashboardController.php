@@ -192,10 +192,21 @@ class AdminDashboardController extends Controller
             ->get();
 
         // 10. Top sản phẩm bán chạy nhất
+        // Bảng products không có cột sold_count -> tính từ order_items (bỏ đơn đã hủy / hoàn tiền).
+        // (SQLite bỏ qua cột lạ nên lỗi chỉ lộ ra trên MySQL: trang Tổng Quan trả 500.)
+        $soldSubquery = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->whereColumn('order_items.product_id', 'products.id')
+            ->whereNotIn('orders.order_status', ['cancelled', 'refunded'])
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0)');
+
         $topProducts = Product::with('category')
-            ->orderBy('sold_count', 'desc')
+            ->select('products.*')
+            ->selectSub($soldSubquery, 'sold_count')
+            ->orderByDesc('sold_count')
             ->take(5)
-            ->get();
+            ->get()
+            ->each(fn ($product) => $product->sold_count = (int) $product->sold_count);
 
         return response()->json([
             'success' => true,
