@@ -140,153 +140,149 @@ class MomoController extends Controller
     }
 
     /**
-     * Xử lý IPN (Instant Payment Notification) từ MoMo
-     * Đây là nơi DUY NHẤT được phép cập nhật payment_status
+     * Các trường MoMo ký trong chữ ký trả về (redirect & IPN), theo thứ tự a-z.
+     * LƯU Ý: MoMo KHÔNG gửi accessKey trong redirect/IPN — accessKey lấy từ cấu hình cửa hàng.
+     * (Trước đây code bắt buộc request có accessKey nên mọi giao dịch đều bị coi là lỗi
+     *  và đơn không bao giờ được chuyển sang "đã thanh toán".)
      */
-    public function handleIPN(Request $request): JsonResponse
+    private const SIGNED_FIELDS = [
+        'amount', 'extraData', 'message', 'orderId', 'orderInfo', 'orderType',
+        'partnerCode', 'payType', 'requestId', 'responseTime', 'resultCode', 'transId',
+    ];
+
+    private function verifySignature(array $data): bool
     {
-        $data = $request->all();
-
-        Log::info('MoMo IPN received', ['data' => $data]);
-
-        // Kiểm tra bắt buộc các trường
-        $requiredFields = ['partnerCode', 'orderId', 'requestId', 'amount', 'resultCode', 'signature', 'accessKey'];
-        foreach ($requiredFields as $field) {
-            if (!isset($data[$field])) {
-                Log::warning('MoMo IPN missing field', ['field' => $field, 'data' => $data]);
-                return response()->json(['resultCode' => 1, 'message' => "Missing field: {$field}"]);
-            }
+        $accessKey = (string) config('services.momo.access_key');
+        $secretKey = (string) config('services.momo.secret_key');
+        if ($accessKey === '' || $secretKey === '' || empty($data['signature'])) {
+            return false;
+        }
+        // Chỉ chấp nhận giao dịch của chính cửa hàng mình
+        if (($data['partnerCode'] ?? null) !== config('services.momo.partner_code')) {
+            return false;
         }
 
-        $secretKey = config('services.momo.secret_key') ?? env('MOMO_SECRET_KEY');
-
-        // Tạo raw signature để verify (KHÔNG bao gồm signature field)
-        $rawHash = "accessKey={$data['accessKey']}"
-            . "&amount={$data['amount']}"
-            . "&extraData={$data['extraData']}"
-            . "&message={$data['message']}"
-            . "&orderId={$data['orderId']}"
-            . "&orderInfo={$data['orderInfo']}"
-            . "&orderType={$data['orderType']}"
-            . "&partnerCode={$data['partnerCode']}"
-            . "&payType={$data['payType']}"
-            . "&requestId={$data['requestId']}"
-            . "&responseTime={$data['responseTime']}"
-            . "&resultCode={$data['resultCode']}"
-            . "&transId={$data['transId']}";
-
-        $expectedSignature = hash_hmac('sha256', $rawHash, $secretKey);
-
-        if ($expectedSignature !== $data['signature']) {
-            Log::warning('MoMo IPN invalid signature', [
-                'received' => $data['signature'],
-                'expected' => $expectedSignature,
-                'rawHash' => $rawHash,
-            ]);
-            return response()->json(['resultCode' => 1, 'message' => 'Invalid signature']);
+        $rawHash = 'accessKey=' . $accessKey;
+        foreach (self::SIGNED_FIELDS as $field) {
+            $rawHash .= '&' . $field . '=' . ($data[$field] ?? '');
         }
 
-        // Tìm order bằng requestId hoặc orderId
-        $order = Order::where('momo_request_id', $data['requestId'])
-            ->orWhere('momo_order_id', $data['orderId'])
+        return hash_equals(hash_hmac('sha256', $rawHash, $secretKey), (string) $data['signature']);
+    }
+
+    private function findOrder(array $data): ?Order
+    {
+        if (empty($data['orderId']) && empty($data['requestId'])) {
+            return null;
+        }
+
+        return Order::where('momo_order_id', $data['orderId'] ?? '')
+            ->orWhere('momo_request_id', $data['requestId'] ?? '')
             ->first();
+    }
 
-        if (!$order) {
-            Log::warning('MoMo IPN order not found', [
-                'requestId' => $data['requestId'],
-                'orderId' => $data['orderId'],
-            ]);
-            return response()->json(['resultCode' => 1, 'message' => 'Order not found']);
-        }
-
-        // IPN trùng / đến trễ: đơn đã thanh toán thì không ghi đè (tránh bị chuyển thành "failed")
+    /**
+     * Ghi nhận kết quả thanh toán đã được xác thực chữ ký. Dùng chung cho IPN và trang trả về,
+     * idempotent: đơn đã "paid" thì không bị ghi đè (IPN trùng / đến trễ).
+     */
+    private function applyResult(Order $order, array $data): void
+    {
         if ($order->payment_status === 'paid') {
-            return response()->json(['resultCode' => 0, 'message' => 'Order already paid']);
+            return;
         }
 
-        // Chỉ cập nhật khi thanh toán thành công (resultCode == 0)
         if ((int) $data['resultCode'] === 0) {
             $order->update(array_merge([
                 'payment_status' => 'paid',
                 'momo_trans_id' => $data['transId'] ?? null,
                 'momo_response_time' => $data['responseTime'] ?? null,
                 'momo_pay_type' => $data['payType'] ?? null,
+                'momo_result_code' => $data['resultCode'],
+                'momo_message' => $data['message'] ?? null,
             ],
                 // Giống VNPAY: đơn đã thu tiền -> "đã xác nhận"; đơn đã hủy thì giữ nguyên để admin hoàn tiền
                 in_array($order->order_status, [Order::STATUS_PENDING, Order::STATUS_PROCESSING], true)
                     ? ['order_status' => Order::STATUS_CONFIRMED]
                     : []
             ));
-
-            Log::info('MoMo IPN payment success', [
-                'order_id' => $order->id,
-                'transId' => $data['transId'] ?? null,
-            ]);
+            Log::info('MoMo payment success', ['order_id' => $order->id, 'transId' => $data['transId'] ?? null]);
         } else {
             $order->update([
                 'payment_status' => 'failed',
                 'momo_result_code' => $data['resultCode'],
                 'momo_message' => $data['message'] ?? null,
             ]);
-
-            Log::info('MoMo IPN payment failed', [
-                'order_id' => $order->id,
-                'resultCode' => $data['resultCode'],
-                'message' => $data['message'] ?? null,
-            ]);
+            Log::info('MoMo payment failed', ['order_id' => $order->id, 'resultCode' => $data['resultCode']]);
         }
+    }
+
+    /**
+     * IPN: MoMo gọi server-to-server sau khi khách thanh toán.
+     */
+    public function handleIPN(Request $request): JsonResponse
+    {
+        $data = $request->all();
+        Log::info('MoMo IPN received', ['orderId' => $data['orderId'] ?? null, 'resultCode' => $data['resultCode'] ?? null]);
+
+        foreach (['partnerCode', 'orderId', 'requestId', 'amount', 'resultCode', 'signature'] as $field) {
+            if (!isset($data[$field])) {
+                Log::warning('MoMo IPN missing field', ['field' => $field]);
+                return response()->json(['resultCode' => 1, 'message' => "Missing field: {$field}"]);
+            }
+        }
+
+        if (!$this->verifySignature($data)) {
+            Log::warning('MoMo IPN invalid signature', ['orderId' => $data['orderId']]);
+            return response()->json(['resultCode' => 1, 'message' => 'Invalid signature']);
+        }
+
+        $order = $this->findOrder($data);
+        if (!$order) {
+            Log::warning('MoMo IPN order not found', ['orderId' => $data['orderId'], 'requestId' => $data['requestId']]);
+            return response()->json(['resultCode' => 1, 'message' => 'Order not found']);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['resultCode' => 0, 'message' => 'Order already paid']);
+        }
+
+        $this->applyResult($order, $data);
 
         // Luôn trả về resultCode 0 để MoMo biết đã nhận IPN (tránh retry)
         return response()->json(['resultCode' => 0, 'message' => 'IPN received']);
     }
 
     /**
-     * Xử lý Return URL (khách quay lại từ MoMo)
-     * CHỈ hiển thị kết quả, KHÔNG cập nhật DB
+     * Trang trả về: khách được MoMo chuyển về website kèm kết quả đã ký.
+     * Sau khi xác thực chữ ký cũng ghi nhận kết quả (như VNPAY) để khách thấy ngay trạng thái đúng
+     * kể cả khi IPN đến chậm hoặc không tới được (chạy local).
      */
     public function handleReturn(Request $request): JsonResponse
     {
         $data = $request->all();
 
-        $secretKey = config('services.momo.secret_key') ?? env('MOMO_SECRET_KEY');
-
-        // Kiểm tra các trường cần thiết cho chữ ký
-        $signatureFields = ['accessKey', 'amount', 'extraData', 'message', 'orderId', 'orderInfo', 'orderType', 'partnerCode', 'payType', 'requestId', 'responseTime', 'resultCode', 'transId'];
-        foreach ($signatureFields as $field) {
-            if (!isset($data[$field])) {
-                Log::warning('MoMo Return missing field for signature', ['field' => $field, 'data' => $data]);
-                return response()->json([
-                    'success' => false,
-                    'message' => "Thiếu trường dữ liệu: {$field}",
-                    'data' => ['signature_valid' => false],
-                ]);
-            }
+        if (!isset($data['orderId'], $data['resultCode'], $data['signature'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Thiếu thông tin kết quả thanh toán từ MoMo.',
+                'data' => ['signature_valid' => false],
+            ]);
         }
 
-        $rawHash = "accessKey={$data['accessKey']}"
-            . "&amount={$data['amount']}"
-            . "&extraData={$data['extraData']}"
-            . "&message={$data['message']}"
-            . "&orderId={$data['orderId']}"
-            . "&orderInfo={$data['orderInfo']}"
-            . "&orderType={$data['orderType']}"
-            . "&partnerCode={$data['partnerCode']}"
-            . "&payType={$data['payType']}"
-            . "&requestId={$data['requestId']}"
-            . "&responseTime={$data['responseTime']}"
-            . "&resultCode={$data['resultCode']}"
-            . "&transId={$data['transId']}";
+        $isValidSignature = $this->verifySignature($data);
+        $isSuccess = (int) $data['resultCode'] === 0;
 
-        $expectedSignature = hash_hmac('sha256', $rawHash, $secretKey);
-
-        $isValidSignature = ($expectedSignature === ($data['signature'] ?? ''));
-        $isSuccess = ((int) ($data['resultCode'] ?? 1) === 0);
+        if ($isValidSignature && ($order = $this->findOrder($data))) {
+            $this->applyResult($order, $data);
+        }
 
         return response()->json([
             'success' => $isValidSignature && $isSuccess,
-            'message' => $isValidSignature
-                ? ($isSuccess ? 'Thanh toán thành công!' : 'Thanh toán thất bại: ' . ($data['message'] ?? 'Unknown error'))
-                : 'Chữ ký không hợp lệ - có thể URL bị giả mạo.',
+            'message' => !$isValidSignature
+                ? 'Không xác thực được kết quả thanh toán (chữ ký không hợp lệ).'
+                : ($isSuccess
+                    ? 'Thanh toán MoMo thành công!'
+                    : 'Thanh toán MoMo chưa thành công: ' . ($data['message'] ?? 'giao dịch bị hủy')),
             'data' => [
                 'orderId' => $data['orderId'] ?? null,
                 'requestId' => $data['requestId'] ?? null,

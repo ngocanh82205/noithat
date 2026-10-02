@@ -52,8 +52,8 @@ class MomoPaymentTest extends TestCase
         ]));
 
         return array_merge([
+            // Đúng như dữ liệu thật MoMo gửi về: KHÔNG có accessKey
             'partnerCode' => $this->partnerCode,
-            'accessKey' => $this->accessKey,
             'requestId' => $this->order->momo_request_id,
             'orderId' => $this->order->momo_order_id,
             'amount' => '10000000',
@@ -70,7 +70,7 @@ class MomoPaymentTest extends TestCase
 
     protected function generateSignature(array $data): string
     {
-        $rawHash = "accessKey={$data['accessKey']}"
+        $rawHash = "accessKey={$this->accessKey}"
             . "&amount={$data['amount']}"
             . "&extraData={$data['extraData']}"
             . "&message={$data['message']}"
@@ -173,7 +173,7 @@ class MomoPaymentTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'success' => false,
-                'message' => 'Chữ ký không hợp lệ - có thể URL bị giả mạo.',
+                'message' => 'Không xác thực được kết quả thanh toán (chữ ký không hợp lệ).',
             ]);
     }
 
@@ -189,7 +189,7 @@ class MomoPaymentTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
-                'message' => 'Thanh toán thành công!',
+                'message' => 'Thanh toán MoMo thành công!',
                 'data' => [
                     'signature_valid' => true,
                 ],
@@ -231,5 +231,45 @@ class MomoPaymentTest extends TestCase
         $this->postJson('/api/momo/ipn', $data)->assertJson(['resultCode' => 0]);
 
         $this->assertEquals('paid', $this->order->fresh()->payment_status);
+    }
+    /** @test */
+    public function return_url_without_access_key_like_real_momo_marks_order_paid()
+    {
+        $this->order->update(['order_status' => Order::STATUS_PROCESSING]);
+        $data = $this->getBaseIpnData();
+        $this->assertArrayNotHasKey('accessKey', $data);
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->getJson('/api/momo/return?' . http_build_query($data))
+            ->assertOk()
+            ->assertJson(['success' => true, 'data' => ['signature_valid' => true]]);
+
+        $order = $this->order->fresh();
+        $this->assertEquals('paid', $order->payment_status);
+        $this->assertEquals(Order::STATUS_CONFIRMED, $order->order_status);
+    }
+
+    /** @test */
+    public function return_url_with_cancelled_payment_reports_failure_and_marks_failed()
+    {
+        $data = $this->getBaseIpnData(['resultCode' => '1006', 'message' => 'Giao dịch bị từ chối bởi người dùng.']);
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->getJson('/api/momo/return?' . http_build_query($data))
+            ->assertOk()
+            ->assertJson(['success' => false, 'data' => ['signature_valid' => true]])
+            ->assertJsonPath('message', 'Thanh toán MoMo chưa thành công: Giao dịch bị từ chối bởi người dùng.');
+
+        $this->assertEquals('failed', $this->order->fresh()->payment_status);
+    }
+
+    /** @test */
+    public function ipn_from_another_partner_code_is_rejected()
+    {
+        $data = $this->getBaseIpnData(['partnerCode' => 'OTHERSHOP']);
+        $data['signature'] = $this->generateSignature($data);
+
+        $this->postJson('/api/momo/ipn', $data)->assertJson(['resultCode' => 1, 'message' => 'Invalid signature']);
+        $this->assertEquals('pending', $this->order->fresh()->payment_status);
     }
 }
