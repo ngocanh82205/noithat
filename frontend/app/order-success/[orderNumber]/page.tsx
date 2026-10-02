@@ -29,7 +29,8 @@ export default function OrderSuccessPage({
     if (paymentMethod === "momo") {
       setVerifyingMomo(true);
       orderService.verifyMomoReturn(searchParams).then((res) => {
-        setMomoVerification(res.data || null);
+        // Phản hồi của /momo/return chính là MomoReturnResponse ({success, message, data})
+        setMomoVerification(res as unknown as MomoReturnResponse);
         setVerifyingMomo(false);
       }).catch(() => {
         setVerifyingMomo(false);

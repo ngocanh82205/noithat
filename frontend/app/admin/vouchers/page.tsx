@@ -80,6 +80,8 @@ export default function AdminVouchersPage() {
       if (res.success) {
         setModalOpen(false);
         loadVouchers();
+      } else {
+        setFormError(res.message || "Không thể tạo mã giảm giá.");
       }
     } catch (err: any) {
       setFormError(err.message || "Lỗi khi tạo mã giảm giá");
@@ -110,7 +112,11 @@ export default function AdminVouchersPage() {
     if (!confirm("Bạn có chắc chắn muốn xóa mã giảm giá này?")) return;
 
     try {
-      await adminService.deleteVoucher(id);
+      const res = await adminService.deleteVoucher(id);
+      if (!res.success) {
+        alert(res.message || "Không thể xóa mã");
+        return;
+      }
       setVouchers((prev) => prev.filter((v) => v.id !== id));
     } catch (err: any) {
       alert(err.message || "Không thể xóa mã");

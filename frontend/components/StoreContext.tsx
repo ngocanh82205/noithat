@@ -180,18 +180,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if (res.success && res.data?.user) {
                 setUser(res.data.user);
                 localStorage.setItem("gs_auth_user", JSON.stringify(res.data.user));
-              } else {
+              } else if ((res as any).status === 401) {
+                // Token hết hạn / bị thu hồi -> đăng xuất. Lỗi mạng hoặc server đang khởi động
+                // (Render free "ngủ") thì giữ phiên đăng nhập, không đăng xuất oan.
                 localStorage.removeItem("gs_auth_token");
                 localStorage.removeItem("gs_auth_user");
                 setToken(null);
                 setUser(null);
               }
-            })
-            .catch(() => {
-              localStorage.removeItem("gs_auth_token");
-              localStorage.removeItem("gs_auth_user");
-              setToken(null);
-              setUser(null);
             });
         }
       } catch (e) {
@@ -379,6 +375,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [cartSubtotal]
   );
+
+  // Giỏ hàng thay đổi sau khi đã áp mã: kiểm tra lại với tạm tính mới để số tiền giảm hiển thị
+  // khớp với số server sẽ tính khi đặt hàng (vd. bớt sản phẩm xuống dưới đơn tối thiểu).
+  useEffect(() => {
+    if (!appliedVoucher?.code) return;
+    let cancelled = false;
+    voucherService.applyVoucher(appliedVoucher.code, cartSubtotal).then((res) => {
+      if (cancelled) return;
+      if (res.success && res.data) {
+        setDiscountAmount(res.data.discount_amount);
+      } else if ((res as any).status !== 0) {
+        setAppliedVoucher(null);
+        setDiscountAmount(0);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartSubtotal]);
 
   const removeVoucher = useCallback(() => {
     setAppliedVoucher(null);

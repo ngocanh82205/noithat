@@ -10,33 +10,31 @@ import { catalogService } from "@/services/api";
 import { collections, getProductsByCategory } from "@/lib/products";
 
 async function fetchCategoryData(slug: string) {
-  try {
-    const res = await catalogService.getCategoryDetail(slug);
-    if (res.success && res.data) {
-      const cat = (res.data as any).category || res.data;
-      return {
-        name: cat.name || "Bộ Sưu Tập",
-        description: cat.description || "",
-        image: cat.image || "/images/hero-banner.jpg",
-        products: res.data.products || [],
-      };
-    }
-  } catch (err) {
-    // try collection detail
-    try {
-      const colRes = await catalogService.getCollectionDetail(slug);
-      if (colRes.success && colRes.data) {
-        const col = (colRes.data as any).collection || colRes.data;
-        return {
-          name: col.name || "Bộ Sưu Tập",
-          description: col.description || "",
-          image: col.banner_image || col.image || "/images/hero-banner.jpg",
-          products: colRes.data.products || [],
-        };
-      }
-    } catch (e) {
-      // ignore
-    }
+  const catRes = await catalogService.getCategoryDetail(slug);
+  if (catRes.success && catRes.data) {
+    const cat = (catRes.data as any).category || catRes.data;
+    return {
+      name: cat.name || "Bộ Sưu Tập",
+      description: cat.description || "",
+      image: cat.image || "/images/hero-banner.jpg",
+      products: catRes.data.products || [],
+    };
+  }
+
+  // Máy chủ không phản hồi -> báo lỗi tải trang thay vì "không tìm thấy"
+  const catStatus = (catRes as any).status ?? 0;
+  const apiDown = !catRes.success && (catStatus === 0 || catStatus >= 500);
+
+  // Không phải danh mục -> thử bộ sưu tập (slug của collection)
+  const colRes = apiDown ? catRes : await catalogService.getCollectionDetail(slug);
+  if (colRes.success && colRes.data) {
+    const col = (colRes.data as any).collection || colRes.data;
+    return {
+      name: col.name || "Bộ Sưu Tập",
+      description: col.description || "",
+      image: col.banner_image || col.image || "/images/hero-banner.jpg",
+      products: colRes.data.products || [],
+    };
   }
 
   // Fallback
@@ -48,6 +46,10 @@ async function fetchCategoryData(slug: string) {
       image: fallbackCol.image,
       products: getProductsByCategory(slug),
     };
+  }
+
+  if (apiDown) {
+    throw new Error("API_UNAVAILABLE");
   }
 
   return null;

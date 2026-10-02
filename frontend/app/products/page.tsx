@@ -62,6 +62,9 @@ export default function ProductsPage() {
       }
 
       const res = await productService.getAll(params);
+      if (!res.success && (res as any).status === 0) {
+        throw new Error(res.message); // không kết nối được -> dùng danh sách dự phòng bên dưới
+      }
       if (res.success && res.data) {
         setProductsList(res.data);
       } else {

@@ -19,6 +19,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import { formatPrice } from "@/lib/products";
+import { useToast } from "./ToastProvider";
 import { useStore } from "./StoreContext";
 import { productService, faqService, ApiProduct, ApiProductVariant, ApiFaq } from "@/services/api";
 import Product360Viewer from "./Product360Viewer";
@@ -85,6 +86,7 @@ export default function ProductDetailClient({ product }: { product: any }) {
   const [reviewName, setReviewName] = useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
+  const { showToast } = useToast();
   const [reviewSuccess, setReviewSuccess] = useState(false);
   const [reviewCoinsAwarded, setReviewCoinsAwarded] = useState(0);
 
@@ -154,24 +156,10 @@ export default function ProductDetailClient({ product }: { product: any }) {
           setReviewSuccess(false);
           setReviewCoinsAwarded(0);
         }, coinsAwarded > 0 ? 3000 : 1500);
+      } else {
+        // Trước đây lỗi vẫn thêm 1 đánh giá giả (gắn nhãn "đã mua hàng") vào danh sách
+        showToast({ type: "error", title: "Chưa gửi được đánh giá", message: res.message || "Vui lòng thử lại." });
       }
-    } catch (e) {
-      setReviews([
-        {
-          id: Date.now(),
-          customer_name: reviewName,
-          rating: reviewRating,
-          comment: reviewComment,
-          is_verified_purchase: true,
-          created_at: new Date().toISOString(),
-        },
-        ...reviews,
-      ]);
-      setReviewSuccess(true);
-      setTimeout(() => {
-        setReviewFormOpen(false);
-        setReviewSuccess(false);
-      }, 1500);
     } finally {
       setSubmittingReview(false);
     }
@@ -194,22 +182,10 @@ export default function ProductDetailClient({ product }: { product: any }) {
         setFaqName("");
         setFaqQuestion("");
         setTimeout(() => setFaqSuccess(false), 2500);
+      } else {
+        // Trước đây lỗi vẫn hiện câu hỏi kèm câu trả lời bịa sẵn của "KTS"
+        showToast({ type: "error", title: "Chưa gửi được câu hỏi", message: res.message || "Vui lòng thử lại." });
       }
-    } catch (e) {
-      setFaqs([
-        {
-          id: Date.now(),
-          product_id: product.id,
-          customer_name: faqName,
-          question: faqQuestion,
-          answer: "Cảm ơn bạn đã hỏi. KTS GS Luxury sẽ liên hệ phản hồi chi tiết trong ít phút!",
-          answered_by: "KTS GS Luxury",
-          created_at: new Date().toISOString(),
-        },
-        ...faqs,
-      ]);
-      setFaqSuccess(true);
-      setTimeout(() => setFaqSuccess(false), 2500);
     } finally {
       setSubmittingFaq(false);
     }

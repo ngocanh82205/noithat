@@ -134,7 +134,7 @@ class MomoController extends Controller
             ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Không thể kết nối MoMo: ' . $e->getMessage(),
+                'message' => 'Không thể kết nối cổng thanh toán MoMo lúc này. Vui lòng thử lại sau hoặc chọn phương thức khác.',
             ], 500);
         }
     }

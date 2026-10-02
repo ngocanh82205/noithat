@@ -72,6 +72,8 @@ class AffiliateController extends Controller
             'bank_name' => 'required|string',
             'account_number' => 'required|string',
             'account_holder' => 'required|string',
+        ], [
+            'amount.min' => 'Số tiền rút tối thiểu là 200.000₫.',
         ]);
 
         $user = $request->user();

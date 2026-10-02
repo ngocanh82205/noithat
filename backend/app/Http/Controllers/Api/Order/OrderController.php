@@ -68,7 +68,7 @@ class OrderController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Dữ liệu không hợp lệ.',
+                'message' => $validator->errors()->first() ?: 'Dữ liệu không hợp lệ.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -419,7 +419,7 @@ class OrderController extends Controller
             }
             return response()->json([
                 'success' => false,
-                'message' => 'Dữ liệu không hợp lệ.',
+                'message' => collect($e->errors())->flatten()->first() ?: 'Dữ liệu không hợp lệ.',
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {

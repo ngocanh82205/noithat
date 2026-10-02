@@ -52,6 +52,12 @@ export default function AdminDashboardPage() {
             message: "Dữ liệu kinh doanh và báo cáo đã được làm mới tức thì.",
           });
         }
+      } else {
+        showToast({
+          type: "error",
+          title: "Không tải được số liệu",
+          message: res.message || "Không thể tải dữ liệu tổng quan, vui lòng thử lại.",
+        });
       }
     } catch (err) {
       console.error("Failed to load admin stats:", err);

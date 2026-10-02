@@ -34,7 +34,7 @@ class ReviewController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Dữ liệu đánh giá không hợp lệ.',
+                'message' => $validator->errors()->first() ?: 'Dữ liệu đánh giá không hợp lệ.',
                 'errors' => $validator->errors(),
             ], 422);
         }

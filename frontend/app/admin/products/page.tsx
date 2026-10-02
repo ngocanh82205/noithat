@@ -63,6 +63,8 @@ export default function AdminProductsPage() {
       .then(([prodRes, catRes]) => {
         if (prodRes.success && prodRes.data) {
           setProducts(prodRes.data);
+        } else {
+          alert(prodRes.message || "Không thể tải danh sách sản phẩm.");
         }
         if (catRes.success && catRes.data) {
           setCategories(catRes.data);
@@ -130,7 +132,11 @@ export default function AdminProductsPage() {
     if (!confirm("Quý khách có chắc chắn muốn xóa sản phẩm này khỏi hệ thống?")) return;
 
     try {
-      await adminService.deleteProduct(id);
+      const res = await adminService.deleteProduct(id);
+      if (!res.success) {
+        alert(res.message || "Không thể xóa sản phẩm");
+        return;
+      }
       setProducts((prev) => prev.filter((p) => p.id !== id));
     } catch (err: any) {
       alert(err.message || "Không thể xóa sản phẩm");
@@ -177,6 +183,8 @@ export default function AdminProductsPage() {
         if (res.success) {
           setModalOpen(false);
           loadData();
+        } else {
+          setFormError(res.message || "Không thể lưu sản phẩm.");
         }
       } else {
         // Create
@@ -184,6 +192,8 @@ export default function AdminProductsPage() {
         if (res.success) {
           setModalOpen(false);
           loadData();
+        } else {
+          setFormError(res.message || "Không thể tạo sản phẩm.");
         }
       }
     } catch (err: any) {

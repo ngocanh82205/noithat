@@ -195,6 +195,8 @@ export default function AccountPage() {
       if (res.success) {
         setProfileMsg("Cập nhật thông tin thành công!");
         await refreshProfile();
+      } else {
+        setProfileMsg(res.message || "Không thể cập nhật thông tin.");
       }
     } catch (err: any) {
       setProfileMsg(err.message || "Lỗi khi cập nhật.");
@@ -213,6 +215,8 @@ export default function AccountPage() {
       if (res.success) {
         setShopMsg("Chúc mừng! Gian hàng của bạn đã được kích hoạt thành công.");
         await refreshProfile();
+      } else {
+        setShopMsg(res.message || "Không thể đăng ký gian hàng.");
       }
     } catch (err: any) {
       setShopMsg(err.message || "Lỗi khi đăng ký gian hàng.");

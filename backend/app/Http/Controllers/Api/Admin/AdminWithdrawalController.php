@@ -151,9 +151,13 @@ class AdminWithdrawalController extends Controller
                 'data' => $result['withdrawal']->fresh(),
             ]);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Approve withdrawal failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'message' => $e->getMessage(),
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Không thể duyệt yêu cầu: ' . $e->getMessage(),
+                'message' => 'Không thể duyệt yêu cầu lúc này, vui lòng thử lại.',
             ], 500);
         }
     }

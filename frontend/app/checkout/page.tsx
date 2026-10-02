@@ -196,6 +196,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (formData.shipping_province_id) {
       shippingService.getDistricts(Number(formData.shipping_province_id)).then((res) => {
+        if (!res.success) {
+          enableManualAddress();
+          return;
+        }
         if (res.success && res.data) {
           setDistricts(res.data);
           // Reset district and ward
@@ -219,6 +223,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (formData.shipping_district_id) {
       shippingService.getWards(Number(formData.shipping_district_id)).then((res) => {
+        if (!res.success) {
+          enableManualAddress();
+          return;
+        }
         if (res.success && res.data) {
           setWards(res.data);
           // Reset ward
@@ -403,8 +411,10 @@ export default function CheckoutPage() {
     setVoucherSuccess("");
 
     try {
-      const res = await voucherService.applyVoucher(voucherInput, cartSubtotal);
-      if (res.success && res.data) {
+      // Phải đi qua StoreContext để mã được lưu vào giỏ và gửi kèm đơn hàng
+      // (trước đây chỉ gọi API kiểm tra rồi báo "thành công" nhưng đơn không được giảm giá)
+      const res = await applyVoucherCode(voucherInput.trim());
+      if (res.success) {
         setVoucherSuccess(res.message || "Áp dụng voucher thành công");
         showToast({ type: "success", title: "Thành công", message: res.message || "Áp dụng voucher thành công" });
       } else {

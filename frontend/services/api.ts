@@ -383,7 +383,52 @@ export type AdminCustomer = {
 };
 
 // Helper fetch wrapper
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T> | { success: false; status: number; message: string; errors?: Record<string, string[]> }> {
+// Chuẩn hoá mọi lỗi về một dạng duy nhất { success: false, status, message, errors } — KHÔNG ném lỗi.
+// (Trước đây lỗi HTTP thì trả về, còn mất mạng / server trả HTML (502 khi Render đang khởi động)
+//  thì ném exception -> nhiều màn hình chỉ xử lý một trong hai và "nuốt" lỗi.)
+export const NETWORK_ERROR_MESSAGE =
+  "Không kết nối được máy chủ. Vui lòng kiểm tra mạng hoặc thử lại sau giây lát.";
+const SERVER_ERROR_MESSAGE = "Máy chủ đang khởi động hoặc gặp sự cố, vui lòng thử lại sau ít phút.";
+
+export type ApiErrorResult = {
+  success: false;
+  status: number;
+  message: string;
+  errors?: Record<string, string[]>;
+  data?: any;
+};
+
+function firstValidationError(errors: unknown): string | undefined {
+  if (!errors || typeof errors !== "object") return undefined;
+  const first = Object.values(errors as Record<string, unknown>).flat()[0];
+  return typeof first === "string" ? first : undefined;
+}
+
+async function parseResponse<T>(response: Response): Promise<ApiResponse<T> | ApiErrorResult> {
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null; // không phải JSON (trang lỗi HTML của proxy / server)
+  }
+
+  if (!response.ok || !data) {
+    return {
+      success: false,
+      status: response.status,
+      message:
+        firstValidationError(data?.errors) ||
+        data?.message ||
+        (response.status >= 500 || !data ? SERVER_ERROR_MESSAGE : "Đã xảy ra lỗi, vui lòng thử lại."),
+      errors: data?.errors,
+      data: data?.data,
+    };
+  }
+
+  return data as ApiResponse<T>;
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T> | ApiErrorResult> {
   const url = `${API_BASE_URL}${endpoint}`;
 
   const headers: HeadersInit = {
@@ -400,25 +445,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    // Return structured error instead of throwing
-    return {
-      success: false,
-      status: response.status,
-      message: data.message || "Đã xảy ra lỗi khi kết nối máy chủ.",
-      errors: data.errors,
-      data: data.data,
-    } as any;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch {
+    return { success: false, status: 0, message: NETWORK_ERROR_MESSAGE };
   }
 
-  return data as ApiResponse<T>;
+  return parseResponse<T>(response);
 }
 
 // 1. Authentication Service
@@ -737,16 +774,20 @@ export const adminService = {
     const formData = new FormData();
     formData.append("image", file);
     const token = typeof window !== "undefined" ? localStorage.getItem("gs_auth_token") : null;
-    const res = await fetch(`${API_BASE_URL}/admin/upload-image`, {
-      method: "POST",
-      headers: {
-        Authorization: token ? `Bearer ${token}` : "",
-        Accept: "application/json",
-      },
-      body: formData,
-    });
-    const data = await res.json();
-    return data as ApiResponse<{ url: string; path: string }>;
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}/admin/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          Accept: "application/json",
+        },
+        body: formData,
+      });
+    } catch {
+      return { success: false, status: 0, message: NETWORK_ERROR_MESSAGE } as any;
+    }
+    return (await parseResponse<{ url: string; path: string }>(res)) as ApiResponse<{ url: string; path: string }>;
   },
 
   // Orders

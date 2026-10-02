@@ -30,7 +30,7 @@ class ConsultationController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Dữ liệu không hợp lệ.',
+                'message' => $validator->errors()->first() ?: 'Dữ liệu không hợp lệ.',
                 'errors' => $validator->errors(),
             ], 422);
         }

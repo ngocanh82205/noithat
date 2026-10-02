@@ -10,13 +10,9 @@ import { productService, ApiProduct } from "@/services/api";
 import { products as fallbackProducts, getProductById, getRelatedProducts } from "@/lib/products";
 
 async function fetchProduct(slugOrId: string): Promise<{ product: any; related_products: any[] } | null> {
-  try {
-    const res = await productService.getDetail(slugOrId);
-    if (res.success && res.data) {
-      return res.data;
-    }
-  } catch (err) {
-    // API not reachable, fallback to static mock
+  const res = await productService.getDetail(slugOrId);
+  if (res.success && res.data) {
+    return res.data;
   }
 
   const fallback = getProductById(slugOrId);
@@ -25,6 +21,13 @@ async function fetchProduct(slugOrId: string): Promise<{ product: any; related_p
       product: fallback,
       related_products: getRelatedProducts(fallback, 4),
     };
+  }
+
+  // Máy chủ không phản hồi / lỗi 5xx: KHÔNG báo 404 (sản phẩm vẫn tồn tại) mà để app/error.tsx
+  // hiện "Chưa tải được trang — Thử lại".
+  const status = (res as any).status ?? 0;
+  if (status === 0 || status >= 500) {
+    throw new Error("API_UNAVAILABLE");
   }
 
   return null;

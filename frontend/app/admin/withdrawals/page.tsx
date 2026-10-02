@@ -89,6 +89,8 @@ export default function AdminWithdrawalsPage() {
           setRecords(res.data.data || []);
           setTotal(res.data.total || 0);
           setLastPage(res.data.last_page || 1);
+        } else {
+          showToast({ type: "error", title: "Lỗi", message: res.message || "Không thể tải dữ liệu." });
         }
       } catch {
         showToast({ type: "error", title: "Lỗi", message: "Không thể tải dữ liệu." });
@@ -146,6 +148,9 @@ export default function AdminWithdrawalsPage() {
         });
         closeModal();
         fetchData(true);
+      } else {
+        // vd. số dư không đủ, yêu cầu đã được xử lý bởi admin khác
+        showToast({ type: "error", title: "Không thể xử lý", message: res.message || "Xử lý thất bại, vui lòng thử lại." });
       }
     } catch {
       showToast({ type: "error", title: "Lỗi", message: "Xử lý thất bại, vui lòng thử lại." });

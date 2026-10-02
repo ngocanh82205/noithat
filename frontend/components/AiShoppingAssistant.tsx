@@ -84,6 +84,8 @@ export default function AiShoppingAssistant() {
           timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         };
         setMessages((prev) => [...prev, aiMsg]);
+      } else {
+        throw new Error(res.message);
       }
     } catch (err) {
       setMessages((prev) => [

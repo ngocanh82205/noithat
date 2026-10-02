@@ -23,6 +23,7 @@ import {
   Box,
 } from "lucide-react";
 import { useStore } from "./StoreContext";
+import { useToast } from "./ToastProvider";
 import {
   spatialRoomService,
   SpatialStagingResult,
@@ -74,6 +75,7 @@ const COLOR_SWATCHES = [
 
 export default function VisualSearchModal() {
   const { isVisualSearchOpen, closeVisualSearch, addToCart } = useStore();
+  const { showToast } = useToast();
 
   // State
   const [currentRoomImage, setCurrentRoomImage] = useState<string>(SAMPLE_ROOMS[0].image);
@@ -130,6 +132,8 @@ export default function VisualSearchModal() {
           setSelectedProduct(res.data.products[0]);
           setItemScale(res.data.products[0].default_scale || 1);
         }
+      } else {
+        showToast({ type: "error", title: "Chưa tìm được gợi ý", message: res.message || "Vui lòng thử lại sau." });
       }
     } catch (err) {
       console.error("Spatial match error:", err);

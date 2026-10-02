@@ -60,6 +60,8 @@ export default function AdminFaqsPage() {
       if (res.success) {
         setSelectedFaq(null);
         loadFaqs();
+      } else {
+        alert(res.message || "Không thể gửi câu trả lời");
       }
     } catch (err: any) {
       alert(err.message || "Lỗi khi gửi câu trả lời");
@@ -72,7 +74,11 @@ export default function AdminFaqsPage() {
     if (!confirm("Bạn có chắc chắn muốn xóa câu hỏi này?")) return;
 
     try {
-      await adminService.deleteFaq(id);
+      const res = await adminService.deleteFaq(id);
+      if (!res.success) {
+        alert(res.message || "Không thể xóa câu hỏi");
+        return;
+      }
       setFaqs((prev) => prev.filter((f) => f.id !== id));
     } catch (err: any) {
       alert(err.message || "Không thể xóa câu hỏi");
