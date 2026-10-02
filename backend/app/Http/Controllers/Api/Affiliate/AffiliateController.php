@@ -35,7 +35,9 @@ class AffiliateController extends Controller
         $totalEarned = $commissions->where('status', 'paid')->sum('commission_amount');
         $availableBalance = $commissions->where('status', 'approved')->sum('commission_amount');
         $pendingBalance = $commissions->where('status', 'pending')->sum('commission_amount');
-        $totalOrdersReferred = $commissions->count();
+        // Đếm theo đơn hàng (một đơn có thể có nhiều dòng hoa hồng sau khi tách khoản lúc chi trả)
+        $totalOrdersReferred = $commissions->where('status', '!=', 'cancelled')
+            ->pluck('order_id')->filter()->unique()->count();
 
         // Sample initial referral data if user is new
         $recentCommissions = AffiliateCommission::where('user_id', $user->id)

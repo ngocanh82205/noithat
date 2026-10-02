@@ -370,6 +370,10 @@ class LoyaltyAndRewardsTest extends TestCase
         $available = AffiliateCommission::where('user_id', $referrer->id)->where('status', 'approved')->sum('commission_amount');
         $this->assertEquals(500000, (float) $paid);
         $this->assertEquals(200000, (float) $available);
+
+        // Tách khoản không làm tăng số "đơn được giới thiệu"
+        $this->actingAs($referrer, 'sanctum')->getJson('/api/affiliate/stats')
+            ->assertJsonPath('data.available_balance', 200000);
     }
 
     /** @test */

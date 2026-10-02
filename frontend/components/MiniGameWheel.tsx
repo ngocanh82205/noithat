@@ -154,7 +154,8 @@ export default function MiniGameWheel() {
               {/* Segment Labels Overlay */}
               <div className="absolute inset-0 pointer-events-none">
                 {WHEEL_SEGMENTS.map((seg, i) => {
-                  const angle = i * 45 + 22.5;
+                  // conic-gradient bắt đầu từ 12 giờ, còn rotate() của nhãn tính từ 3 giờ -> trừ 90°
+                  const angle = i * 45 + 22.5 - 90;
                   return (
                     <div
                       key={seg.id}

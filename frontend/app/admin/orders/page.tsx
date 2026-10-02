@@ -200,10 +200,20 @@ export default function AdminOrdersPage() {
                         className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
                           order.payment_status === "paid"
                             ? "bg-green-900/40 text-green-400"
+                            : order.payment_status === "refunded"
+                            ? "bg-gray-700/60 text-gray-300"
+                            : order.payment_status === "failed"
+                            ? "bg-red-900/40 text-red-400"
                             : "bg-yellow-900/40 text-yellow-400"
                         }`}
                       >
-                        {order.payment_status === "paid" ? "Đã Thanh Toán" : "Chưa Trả"}
+                        {order.payment_status === "paid"
+                          ? "Đã Thanh Toán"
+                          : order.payment_status === "refunded"
+                          ? "Đã Hoàn Tiền"
+                          : order.payment_status === "failed"
+                          ? "Thanh Toán Lỗi"
+                          : "Chưa Trả"}
                       </span>
                     </td>
                     <td className="p-4">

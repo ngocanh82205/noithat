@@ -53,7 +53,7 @@ export const products: Product[] = [
     category: "Living Room",
     categorySlug: "living-room",
     price: 42000000,
-    image: "/images/chair-1.jpeg",
+    image: "/images/chair-1.jpg",
     image2: "/images/chair-2.jpg",
     description:
       "Ghế bành dáng vỏ sò, chân đồng thau đánh xước, vải nhập khẩu Ý, điểm nhấn hoàn hảo cho góc đọc sách.",

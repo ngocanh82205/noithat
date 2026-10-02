@@ -14,6 +14,12 @@ const config: Config = {
         espresso: "#1A1A1A",
         gold: "#D4AF37",
         champagne: "#E6D5B8",
+        // Tông gỗ & cát dùng ở ví xu, affiliate, gian hàng (trước đây chưa khai báo nên không hiển thị)
+        sand: "#E8DCC4",
+        wood: {
+          DEFAULT: "#6B4A32",
+          dark: "#3E2A1C",
+        },
       },
       fontFamily: {
         serif: ["var(--font-heading)", "Georgia", "serif"],

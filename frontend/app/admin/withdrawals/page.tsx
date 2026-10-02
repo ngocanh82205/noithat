@@ -46,8 +46,9 @@ const STATUS_BADGE: Record<string, { label: string; cls: string; icon: React.Rea
   },
 };
 
-function fmt(n: number) {
-  return n.toLocaleString("vi-VN") + " ₫";
+// API trả decimal dạng chuỗi ("500000.00") -> ép sang số trước khi định dạng
+function fmt(n: number | string) {
+  return Number(n || 0).toLocaleString("vi-VN") + " ₫";
 }
 
 function fmtDate(d: string) {
@@ -155,8 +156,8 @@ export default function AdminWithdrawalsPage() {
 
   // Summary stats
   const pendingCount = records.filter((r) => r.status === "pending").length;
-  const pendingAmount = records.filter((r) => r.status === "pending").reduce((s, r) => s + r.amount, 0);
-  const approvedAmount = records.filter((r) => r.status === "approved").reduce((s, r) => s + r.amount, 0);
+  const pendingAmount = records.filter((r) => r.status === "pending").reduce((s, r) => s + Number(r.amount || 0), 0);
+  const approvedAmount = records.filter((r) => r.status === "approved").reduce((s, r) => s + Number(r.amount || 0), 0);
 
   return (
     <div className="space-y-6 animate-fade-in">

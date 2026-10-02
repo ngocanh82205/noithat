@@ -214,7 +214,7 @@ class FurnitureSeeder extends Seeder
                 'is_bestseller' => true,
                 'rating_avg' => 5.0,
                 'rating_count' => 24,
-                'images' => ['/images/chair-1.jpeg', '/images/chair-2.jpg'],
+                'images' => ['/images/chair-1.jpg', '/images/chair-2.jpg'],
                 'variants' => [
                     ['name' => 'Ombré Terracotta', 'color_name' => 'Terracotta', 'color_hex' => '#E2725B', 'size' => 'Standard', 'price' => 42000000],
                     ['name' => 'Ombré Midnight Blue', 'color_name' => 'Midnight Blue', 'color_hex' => '#191970', 'size' => 'Standard', 'price' => 42000000],
