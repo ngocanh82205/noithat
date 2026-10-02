@@ -1,0 +1,44 @@
+# Root .gitignore
+node_modules
+/.pnp
+.pnp.js
+
+# Environment & Credentials
+.env
+.env.*
+*.env
+*.env.*
+!*.env.example
+*.pem
+*.key
+auth.json
+
+# Backend Laravel
+backend/.env
+backend/.env.*
+backend/vendor/
+backend/storage/logs/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/storage/app/public/
+backend/bootstrap/cache/
+backend/database/*.sqlite*
+backend/docker/ca.pem
+
+# Frontend Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/node_modules/
+*.tsbuildinfo
+
+# Logs & System
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.fleet/
+.phpunit.result.cache
+trienkhai.pdf
