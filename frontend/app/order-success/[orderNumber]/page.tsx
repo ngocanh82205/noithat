@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCircle2, QrCode, Phone, Mail, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, QrCode, Phone, Mail, ArrowRight, AlertCircle, Loader2, XCircle } from "lucide-react";
 import SiteChrome from "@/components/SiteChrome";
 import { formatPrice } from "@/lib/products";
 import { orderService, MomoReturnResponse } from "@/services/api";
@@ -37,6 +37,18 @@ export default function OrderSuccessPage({
     }
   }, [paymentMethod, searchParams]);
 
+  // Trang này có thể được mở lại sau này (link cũ, lịch sử trình duyệt): kiểm tra trạng thái thật của đơn
+  const [orderStatus, setOrderStatus] = useState<string | null>(null);
+  useEffect(() => {
+    orderService
+      .trackOrder(params.orderNumber)
+      .then((res) => {
+        if (res.success && res.data) setOrderStatus(res.data.order_status || res.data.status || null);
+      })
+      .catch(() => {});
+  }, [params.orderNumber]);
+  const isClosedOrder = orderStatus === "cancelled" || orderStatus === "refunded";
+
   // Determine success status
   const isMoMoSuccess = momoVerification?.success === true && momoVerification?.data?.signature_valid === true;
   const isMoMoFailed = momoVerification && (momoVerification.success === false || momoVerification.data?.signature_valid === false);
@@ -48,7 +60,23 @@ export default function OrderSuccessPage({
       <SiteChrome>
         <section className="py-16 md:py-24 px-6">
           <div className="mx-auto max-w-2xl bg-white/80 border border-espresso/10 p-8 md:p-12 text-center shadow-ambient">
-            {verifyingMomo && paymentMethod === "momo" ? (
+            {isClosedOrder ? (
+              <div className="flex flex-col items-center gap-4">
+                <XCircle size={56} className="text-red-500" strokeWidth={1.5} />
+                <p className="text-red-600 text-xs tracking-widest2 uppercase">
+                  {orderStatus === "cancelled" ? "Đơn Hàng Đã Hủy" : "Đơn Hàng Đã Hoàn Tiền"}
+                </p>
+                <h1 className="font-serif text-3xl md:text-4xl text-espresso">
+                  Đơn {params.orderNumber} không còn hiệu lực
+                </h1>
+                <Link
+                  href={`/orders/${params.orderNumber}`}
+                  className="text-xs text-gold hover:underline tracking-wider"
+                >
+                  Xem chi tiết trạng thái đơn hàng →
+                </Link>
+              </div>
+            ) : verifyingMomo && paymentMethod === "momo" ? (
               <div className="flex flex-col items-center gap-4">
                 <Loader2 size={56} className="text-gold animate-spin" strokeWidth={1.5} />
                 <p className="text-gold text-xs tracking-widest2 uppercase">
@@ -96,6 +124,12 @@ export default function OrderSuccessPage({
                   </span>
                   . Chúng tôi đã gửi email xác nhận chi tiết đơn hàng đến bạn.
                 </p>
+                <Link
+                  href={`/orders/${params.orderNumber}`}
+                  className="inline-block -mt-4 mb-6 text-xs text-gold hover:underline tracking-wider"
+                >
+                  Theo dõi trạng thái đơn hàng →
+                </Link>
 
                 {/* MoMo Success Info */}
                 {paymentMethod === "momo" && isMoMoSuccess && momoVerification?.data && (

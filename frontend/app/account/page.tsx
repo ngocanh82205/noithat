@@ -489,7 +489,7 @@ export default function AccountPage() {
                                   </button>
                                 )}
                                 <Link
-                                  href={`/order-success/${order.order_number}`}
+                                  href={`/orders/${order.order_number}`}
                                   className="inline-flex items-center gap-1 text-xs text-gold hover:underline font-medium"
                                 >
                                   Theo Dõi Vận Đơn <ChevronRight size={14} />

@@ -164,6 +164,8 @@ export type ApiOrder = {
   coins_used?: number;
   coins_discount?: number;
   coins_earned?: number;
+  shipping_method?: string;
+  tracking_code?: string | null;
   payment_method: "cod" | "bank_transfer" | "vnpay" | "momo";
   payment_status: "pending" | "unpaid" | "paid" | "failed" | "refunded";
   status: "pending" | "confirmed" | "shipping" | "completed" | "cancelled";

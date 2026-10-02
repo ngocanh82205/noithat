@@ -545,7 +545,7 @@ export default function CheckoutPage() {
         // For other payment methods (COD, bank_transfer)
         clearCart();
         router.push(
-          `/order-success/${orderNumber}?method=${formData.payment_method}&amount=${shippingFee + cartSubtotal - discountAmount}`
+          `/order-success/${orderNumber}?method=${formData.payment_method}&amount=${order.total_amount}` // tổng tiền do server tính (đã trừ voucher & xu)
         );
       } else {
         throw new Error(res.message || "Không thể tạo đơn hàng");
