@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\VisualSearch;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Services\GeminiService;
+use App\Services\RoomVisionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,25 +19,169 @@ class VisualSearchController extends Controller
     }
 
     /**
-     * Visual Search & Style Matching Assistant
-     * 
-     * Supports both rule-based (default) and Gemini AI enhanced mode.
-     * For true AI-powered visual search with images, integrate OpenAI Vision API or Google Vision AI.
+     * AI phối nội thất: gợi ý sản phẩm thật trong catalog cho một căn phòng.
+     *
+     * Có 3 chế độ, kết quả luôn ghi rõ chế độ đã dùng (data.engine / data.engine_label):
+     *  - gemini_vision: có ảnh + có GEMINI_API_KEY -> Gemini NHÌN ảnh để phân tích phòng & chọn sản phẩm.
+     *  - gemini_text:   không có ảnh (hoặc ảnh lỗi) + có key -> Gemini đọc câu mô tả.
+     *  - rule_based:    không có key / Gemini lỗi -> gợi ý theo từ khoá trong câu mô tả.
      */
-    public function search(Request $request): JsonResponse
+    public function search(Request $request, RoomVisionService $vision): JsonResponse
     {
-        $prompt = strtolower(trim($request->input('prompt', '')));
-        $style = strtolower(trim($request->input('style', '')));
-        $category = strtolower(trim($request->input('category', '')));
-        $roomType = $request->input('room_type', 'living');
+        $prompt = mb_strtolower(trim((string) $request->input('prompt', '')));
+        $style = mb_strtolower(trim((string) $request->input('style', '')));
+        $category = mb_strtolower(trim((string) $request->input('category', '')));
+        $roomType = (string) $request->input('room_type', 'living');
 
-        // Try Gemini AI if configured
-        if ($this->gemini->isConfigured() && !empty($prompt)) {
-            return $this->handleWithGemini($prompt, $style, $category, $roomType);
+        $image = $this->decodeImage((string) $request->input('image_base64', ''));
+        if ($image === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ảnh không hợp lệ hoặc quá lớn (chỉ nhận JPG/PNG/WEBP dưới 4MB).',
+            ], 422);
         }
 
-        // Fallback to rule-based
-        return $this->handleRuleBased($prompt, $style, $category, $roomType);
+        $visionAttempted = false;
+        if ($image !== null && $vision->isAvailable()) {
+            $visionAttempted = true;
+            $result = $vision->analyze($image['data'], $image['mime'], (string) $request->input('prompt', ''));
+
+            if (is_array($result) && !empty($result['not_a_room'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ảnh này có vẻ không phải ảnh một căn phòng. Vui lòng chụp toàn cảnh không gian cần phối đồ.',
+                ], 422);
+            }
+            if (is_array($result) && isset($result['analysis'])) {
+                return $this->visionResponse($result);
+            }
+        }
+
+        if ($this->gemini->isConfigured() && !empty($prompt)) {
+            $response = $this->handleWithGemini($prompt, $style, $category, $roomType);
+            $engine = 'gemini_text';
+        } else {
+            $response = $this->handleRuleBased($prompt, $style, $category, $roomType);
+            $engine = 'rule_based';
+        }
+
+        // Ghi rõ cho khách biết kết quả được tạo bằng cách nào
+        $payload = $response->getData(true);
+        $engine = ($payload['meta']['engine'] ?? '') === 'rule_based_v1' ? 'rule_based' : $engine;
+        $label = $engine === 'gemini_text'
+            ? 'Gemini AI gợi ý theo mô tả của bạn'
+            : 'Gợi ý theo từ khoá trong mô tả (chưa bật AI phân tích ảnh)';
+        if ($visionAttempted) {
+            $label = 'AI chưa phân tích được ảnh lúc này — đang gợi ý theo mô tả';
+        }
+        $payload['data'] = array_merge($payload['data'] ?? [], [
+            'engine' => $engine,
+            'engine_label' => $label,
+            'image_analyzed' => false,
+            'placement' => null,
+            'style' => null,
+            'summary' => null,
+            'palette' => collect($payload['data']['color_palette'] ?? [])
+                ->filter(fn ($hex) => is_string($hex))
+                ->map(fn ($hex) => ['name' => '', 'hex' => $hex])
+                ->values()
+                ->all(),
+        ]);
+        $payload['data']['products'] = collect($payload['data']['products'] ?? [])
+            ->map(fn ($p) => array_merge($p, ['similarity_score' => null]))
+            ->values()
+            ->all();
+
+        return response()->json($payload, $response->getStatusCode());
+    }
+
+    /**
+     * Tách ảnh base64 (data URL hoặc base64 thuần). null = không gửi ảnh, false = ảnh không hợp lệ.
+     */
+    protected function decodeImage(string $input): array|false|null
+    {
+        $input = trim($input);
+        if ($input === '') {
+            return null;
+        }
+
+        $mime = 'image/jpeg';
+        if (preg_match('#^data:(image/(?:jpeg|jpg|png|webp));base64,#i', $input, $m)) {
+            $mime = strtolower($m[1]) === 'image/jpg' ? 'image/jpeg' : strtolower($m[1]);
+            $input = substr($input, strlen($m[0]));
+        } elseif (str_starts_with($input, 'data:')) {
+            return false; // định dạng khác (gif, svg...)
+        }
+
+        // 4MB ảnh ~ 5.6 triệu ký tự base64
+        if (strlen($input) > 5_600_000) {
+            return false;
+        }
+        $binary = base64_decode($input, true);
+        if ($binary === false || strlen($binary) < 100) {
+            return false;
+        }
+
+        // Kiểm tra chữ ký file thật thay vì tin phần khai báo
+        $info = @getimagesizefromstring($binary);
+        if (!$info || !in_array($info['mime'] ?? '', ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            return false;
+        }
+
+        return ['data' => $input, 'mime' => $info['mime']];
+    }
+
+    protected function visionResponse(array $result): JsonResponse
+    {
+        $analysis = $result['analysis'];
+
+        $products = $result['products']->map(function ($item, $index) {
+            /** @var Product $product */
+            $product = $item['product'];
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'price' => (float) $product->price,
+                'original_price' => $product->original_price ? (float) $product->original_price : null,
+                'category_name' => $product->category?->name ?? 'Nội thất',
+                'image' => $product->images->first()?->image_url ?? '/images/sofa-1.jpg',
+                'material' => $product->material ?? 'Chất liệu cao cấp',
+                'similarity_score' => null,
+                'dimensions' => $product->dimensions ?? 'Kích thước tùy chỉnh',
+                'match_reason' => $item['reason'],
+                'default_scale' => 0.85 + ($index * 0.02),
+                'in_stock' => $product->stock_quantity > 0,
+                'stock_quantity' => $product->stock_quantity,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'meta' => [
+                'engine' => 'gemini_vision',
+                'model' => $result['model'] ?? null,
+                'processed_at' => now()->toISOString(),
+            ],
+            'data' => [
+                'engine' => 'gemini_vision',
+                'engine_label' => 'Gemini Vision đã phân tích ảnh phòng của bạn',
+                'image_analyzed' => true,
+                'detected_category' => null,
+                'detected_room_type' => $analysis['room_type'],
+                'style' => $analysis['style'] ?: null,
+                'estimated_area' => $analysis['estimated_area'] ?: 'Chưa ước lượng được',
+                'recommended_type' => $products->first()['category_name'] ?? 'Nội thất phù hợp',
+                'lighting_analysis' => $analysis['lighting'] ?: 'Chưa nhận xét được ánh sáng',
+                'summary' => $analysis['summary'] ?: null,
+                'color_palette' => array_column($analysis['color_palette'], 'hex'),
+                'palette' => $analysis['color_palette'],
+                'placement' => $analysis['placement'],
+                'matches_count' => $products->count(),
+                'products' => $products,
+            ],
+        ]);
     }
 
     protected function handleWithGemini(string $prompt, string $style, string $category, string $roomType): JsonResponse
@@ -79,7 +224,7 @@ Bạn là **AI Visual Search GS Luxury** - chuyên gia phân tích không gian &
 User input: "{$prompt}" | Style: "{$style}" | Category: "{$category}" | Room: "{$roomType}"
 PROMPT;
 
-        $result = $this->gemini->generateContent($systemPrompt);
+        $result = $this->gemini->generateContent($systemPrompt, ['json' => true]);
 
         if (isset($result['error'])) {
             return $this->handleRuleBased($prompt, $style, $category, $roomType);
@@ -111,7 +256,7 @@ PROMPT;
                 'category_name' => $product->category?->name ?? 'Nội thất phòng khách',
                 'image' => $product->images->first()?->image_url ?? '/images/sofa-1.jpg',
                 'material' => $product->material ?? 'Chất liệu cao cấp',
-                'similarity_score' => rand(85, 98),
+                'similarity_score' => null,
                 'dimensions' => $product->dimensions ?? 'Kích thước tùy chỉnh',
                 'match_reason' => $aiResponse['reasoning'] ?? 'Phù hợp với không gian và phong cách',
                 'default_scale' => 0.85,
@@ -123,8 +268,7 @@ PROMPT;
         return response()->json([
             'success' => true,
             'meta' => [
-                'engine' => 'gemini_1.5_flash',
-                'engine_description' => 'Google Gemini 1.5 Flash AI - Enhanced Visual Search',
+                'engine' => 'gemini_text',
                 'processed_at' => now()->toISOString(),
             ],
             'data' => [

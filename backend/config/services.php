@@ -52,4 +52,12 @@ return [
         'ipn_url' => env('VNPAY_IPN_URL', 'http://127.0.0.1:8000/api/vnpay/ipn'),
     ],
 
+    // Google Gemini (AI Concierge, AI phối nội thất có phân tích ảnh). Không có key -> tự dùng gợi ý theo từ khoá.
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        // Để trống = tự chọn model Flash đang hoạt động (xem GeminiService::MODEL_FALLBACKS)
+        'model' => env('GEMINI_MODEL'),
+        'base_url' => env('GEMINI_BASE_URL'),
+    ],
+
 ];

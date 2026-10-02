@@ -30,7 +30,8 @@ services:
       # Nạp dữ liệu mẫu (sản phẩm, admin, đơn mẫu) ở lần chạy đầu; các lần sau tự bỏ qua
       - key: RUN_SEEDERS
         value: "true"
-      # Tuỳ chọn: thêm GEMINI_API_KEY trong tab Environment nếu muốn AI dùng Gemini thật
+      # Bật AI phân tích ảnh phòng: thêm biến GEMINI_API_KEY trong tab Environment của dịch vụ
+      # (lấy key miễn phí tại https://aistudio.google.com/apikey). Không có key -> gợi ý theo từ khoá.
 
 databases:
   - name: gs-luxury-db

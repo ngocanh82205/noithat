@@ -31,6 +31,29 @@ import {
 } from "@/services/api";
 import StagedProjectProduct from "./StagedProjectProduct";
 
+// Thu nhỏ ảnh (tối đa 1024px, JPEG) trước khi gửi cho AI: nhanh hơn, tốn ít hạn mức hơn,
+// và bỏ metadata (vị trí GPS...) của ảnh chụp từ điện thoại.
+async function toAnalysisImage(src: string, maxSize = 1024): Promise<string | null> {
+  try {
+    const img = document.createElement("img");
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    await img.decode();
+    const ratio = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * ratio));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * ratio));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch {
+    return null;
+  }
+}
+
+const MAX_UPLOAD_MB = 15;
+
 // Curated sample rooms
 const SAMPLE_ROOMS = [
   {
@@ -92,6 +115,8 @@ export default function VisualSearchModal() {
   const [selectedColorHex, setSelectedColorHex] = useState<string>("#964B00");
   const [selectedMaterial, setSelectedMaterial] = useState<"leather" | "velvet" | "wood" | "marble">("leather");
   const [isAddedSuccess, setIsAddedSuccess] = useState<boolean>(false);
+  // Ảnh phòng đã thu nhỏ để gửi cho AI (ảnh mẫu hoặc ảnh khách tải lên)
+  const [roomImageData, setRoomImageData] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stageCanvasRef = useRef<HTMLDivElement>(null);
@@ -99,7 +124,7 @@ export default function VisualSearchModal() {
   // Trigger initial scan when opening
   useEffect(() => {
     if (isVisualSearchOpen && !stagingData) {
-      handlePerformSpatialMatch(SAMPLE_ROOMS[0].defaultIntent);
+      analyzeRoom(SAMPLE_ROOMS[0].image, SAMPLE_ROOMS[0].defaultIntent);
     }
   }, [isVisualSearchOpen]);
 
@@ -115,8 +140,9 @@ export default function VisualSearchModal() {
   };
 
   // Perform AI Spatial Search
-  const handlePerformSpatialMatch = async (intentQuery?: string) => {
+  const handlePerformSpatialMatch = async (intentQuery?: string, imageData?: string | null) => {
     const query = intentQuery || userIntent;
+    const image = imageData === undefined ? roomImageData : imageData;
     setIsScanning(true);
     setIsAddedSuccess(false);
 
@@ -124,6 +150,7 @@ export default function VisualSearchModal() {
       const res = await spatialRoomService.search({
         prompt: query,
         room_type: "luxury_spatial",
+        image_base64: image || undefined,
       });
 
       if (res.success && res.data) {
@@ -131,6 +158,10 @@ export default function VisualSearchModal() {
         if (res.data.products.length > 0) {
           setSelectedProduct(res.data.products[0]);
           setItemScale(res.data.products[0].default_scale || 1);
+        }
+        // AI tìm được khoảng trống trong ảnh -> đặt ghim vào đó (khách vẫn bấm để đổi được)
+        if (res.data.placement) {
+          setPinPosition({ x: res.data.placement.x, y: res.data.placement.y });
         }
       } else {
         showToast({ type: "error", title: "Chưa tìm được gợi ý", message: res.message || "Vui lòng thử lại sau." });
@@ -145,14 +176,30 @@ export default function VisualSearchModal() {
   };
 
   // Handle Upload User Room Photo
+  // Chuẩn bị ảnh (thu nhỏ) rồi gửi cho AI phân tích cùng câu mô tả
+  const analyzeRoom = async (imageSrc: string, intent: string) => {
+    setIsScanning(true);
+    const data = await toAnalysisImage(imageSrc);
+    setRoomImageData(data);
+    await handlePerformSpatialMatch(intent, data);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const imageUrl = URL.createObjectURL(file);
-      setCurrentRoomImage(imageUrl);
-      setPinPosition({ x: 50, y: 65 });
-      handlePerformSpatialMatch(userIntent);
+    e.target.value = ""; // cho phép chọn lại cùng một ảnh
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      showToast({ type: "warning", title: "Định dạng chưa hỗ trợ", message: "Vui lòng chọn ảnh JPG, PNG hoặc WEBP." });
+      return;
     }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      showToast({ type: "warning", title: "Ảnh quá lớn", message: `Vui lòng chọn ảnh dưới ${MAX_UPLOAD_MB}MB.` });
+      return;
+    }
+    const imageUrl = URL.createObjectURL(file);
+    setCurrentRoomImage(imageUrl);
+    setPinPosition({ x: 50, y: 65 });
+    analyzeRoom(imageUrl, userIntent);
   };
 
   // Handle Quick Add to Cart
@@ -189,7 +236,7 @@ export default function VisualSearchModal() {
                 </span>
               </h2>
               <p className="text-xs text-espresso/60 hidden sm:block">
-                Lấy chính xác các mẫu Sofa &amp; Nội thất có trong hệ thống để phối chuẩn tỷ lệ vào phòng của bạn
+                AI phân tích ảnh phòng, gợi ý mẫu nội thất có thật trong catalog &amp; cho bạn ướm thử lên ảnh
               </p>
             </div>
           </div>
@@ -224,7 +271,7 @@ export default function VisualSearchModal() {
                 <span>Tải Ảnh Phòng Của Bạn</span>
               </button>
               <span className="text-[11px] text-espresso/50 hidden md:inline">
-                (JPG, PNG chụp thực tế căn phòng của bạn)
+                (JPG, PNG, WEBP — ảnh chỉ dùng để AI phân tích, không lưu lại)
               </span>
             </div>
 
@@ -240,7 +287,7 @@ export default function VisualSearchModal() {
                     setCurrentRoomImage(room.image);
                     setPinPosition(room.defaultPin);
                     setUserIntent(room.defaultIntent);
-                    handlePerformSpatialMatch(room.defaultIntent);
+                    analyzeRoom(room.image, room.defaultIntent);
                   }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1.5 border ${
                     currentRoomImage === room.image
@@ -289,7 +336,7 @@ export default function VisualSearchModal() {
                     </div>
                   </div>
                   <div className="absolute top-9 left-1/2 -translate-x-1/2 bg-charcoal/90 text-gold px-2.5 py-1 rounded-full text-[10px] font-mono whitespace-nowrap shadow-lg border border-gold/40">
-                    Khoảng trống đặt đồ
+                    {stagingData?.placement ? "Vị trí trống AI gợi ý" : "Vị trí đặt đồ"}
                   </div>
                 </div>
 
@@ -301,9 +348,9 @@ export default function VisualSearchModal() {
                       <div className="bg-charcoal/90 border border-gold px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-gold">
                         <RefreshCw size={20} className="animate-spin" />
                         <div className="text-left">
-                          <div className="font-serif font-bold text-sm">AI Đang Khớp Sản Phẩm Vào Phòng...</div>
+                          <div className="font-serif font-bold text-sm">AI Đang Phân Tích Ảnh Phòng...</div>
                           <div className="text-[11px] text-beige/70 font-mono">
-                            Đang lấy dữ liệu từ catalog nội thất GS Luxury
+                            Nhận diện không gian & chọn sản phẩm trong catalog GS Luxury
                           </div>
                         </div>
                       </div>
@@ -471,33 +518,84 @@ export default function VisualSearchModal() {
                   className="w-full py-3 bg-gradient-to-r from-espresso via-charcoal to-espresso hover:from-gold hover:via-gold-light hover:to-gold text-champagne hover:text-charcoal rounded-xl text-xs font-serif font-bold tracking-wider uppercase transition-all duration-300 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Sparkles size={15} />
-                  <span>{isScanning ? "AI Đang Phối Cảnh..." : "AI Tìm & Phối Sản Phẩm Vào Phòng"}</span>
+                  <span>{isScanning ? "AI Đang Phân Tích..." : "AI Phân Tích Ảnh & Gợi Ý Sản Phẩm"}</span>
                 </button>
               </div>
 
               {/* 2. AI Spatial Vision Report */}
               {stagingData && (
                 <div className="bg-charcoal text-beige p-4 rounded-2xl border border-gold/40 shadow-md space-y-2.5 text-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                    <span className="text-gold font-serif font-bold">Phân Tích Không Gian:</span>
-                    <span className="text-[10px] text-green-400 font-mono">✓ Chuẩn Tỷ Lệ 1:1</span>
+                  <div className="pb-2 border-b border-white/10 space-y-1.5">
+                    <span className="text-gold font-serif font-bold">
+                      {stagingData.image_analyzed ? "Phân Tích Ảnh Phòng:" : "Gợi Ý Theo Mô Tả:"}
+                    </span>
+                    {/* Ghi rõ nguồn của kết quả: AI nhìn ảnh thật hay chỉ gợi ý theo từ khoá */}
+                    <p
+                      className={`text-[10px] font-mono px-2 py-1 rounded ${
+                        stagingData.engine === "gemini_vision"
+                          ? "bg-green-500/15 text-green-300"
+                          : "bg-amber-500/15 text-amber-300"
+                      }`}
+                    >
+                      {stagingData.engine === "gemini_vision" ? "✓ " : "ⓘ "}
+                      {stagingData.engine_label}
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-[11px]">
                     <div>
-                      <span className="text-beige/60">Không gian:</span>
-                      <p className="font-semibold text-white">{stagingData.estimated_area}</p>
+                      <span className="text-beige/60">Loại phòng:</span>
+                      <p className="font-semibold text-white">{stagingData.detected_room_type}</p>
                     </div>
                     <div>
-                      <span className="text-beige/60">Sản phẩm khuyến nghị:</span>
+                      <span className="text-beige/60">
+                        {stagingData.image_analyzed ? "Diện tích (AI ước lượng):" : "Diện tích tham khảo:"}
+                      </span>
+                      <p className="font-semibold text-white">{stagingData.estimated_area}</p>
+                    </div>
+                    {stagingData.style && (
+                      <div>
+                        <span className="text-beige/60">Phong cách:</span>
+                        <p className="font-semibold text-gold">{stagingData.style}</p>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-beige/60">Nhóm sản phẩm gợi ý:</span>
                       <p className="font-semibold text-gold truncate">{stagingData.recommended_type}</p>
                     </div>
                   </div>
 
                   <div className="text-[11px] pt-1">
-                    <span className="text-beige/60">Ánh sáng &amp; Đổ bóng:</span>
+                    <span className="text-beige/60">Ánh sáng:</span>
                     <p className="text-beige/90 leading-snug">{stagingData.lighting_analysis}</p>
                   </div>
+
+                  {stagingData.image_analyzed && (stagingData.palette?.length ?? 0) > 0 && (
+                    <div className="text-[11px] pt-1">
+                      <span className="text-beige/60">Màu chủ đạo trong ảnh:</span>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {stagingData.palette!.map((c) => (
+                          <span key={c.hex} className="flex items-center gap-1 text-[10px] text-beige/80">
+                            <span className="w-3.5 h-3.5 rounded-full border border-white/30" style={{ backgroundColor: c.hex }} />
+                            {c.name || c.hex}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stagingData.placement?.description && (
+                    <p className="text-[11px] text-beige/80">
+                      <span className="text-beige/60">Vị trí trống: </span>
+                      {stagingData.placement.description}
+                    </p>
+                  )}
+
+                  {stagingData.summary && (
+                    <p className="text-[11px] text-beige/90 leading-snug border-t border-white/10 pt-2">
+                      {stagingData.summary}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -505,11 +603,15 @@ export default function VisualSearchModal() {
               {selectedProduct && (
                 <div className="bg-white p-4 rounded-2xl border border-gold/40 shadow-lg space-y-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-green-800 font-bold bg-green-50 px-2 py-0.5 rounded border border-green-200">
-                      ★ {selectedProduct.similarity_score}% Khớp Không Gian
-                    </span>
+                    <span className="text-gold font-bold">Sản phẩm đang ướm thử</span>
                     <span className="text-espresso/50 font-mono text-[11px]">{selectedProduct.dimensions}</span>
                   </div>
+                  {selectedProduct.match_reason && (
+                    <p className="text-[11px] text-espresso/80 bg-sand/20 border border-espresso/10 rounded-lg px-2.5 py-2 leading-snug">
+                      <strong>Vì sao gợi ý: </strong>
+                      {selectedProduct.match_reason}
+                    </p>
+                  )}
 
                   <div className="space-y-1">
                     <h4 className="font-serif font-bold text-sm text-espresso leading-snug">
@@ -579,7 +681,7 @@ export default function VisualSearchModal() {
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-gold" />
                   <h3 className="font-serif font-bold text-sm text-espresso">
-                    Các Mẫu Sofa &amp; Nội Thất Có Sẵn Trong Dự Án ({stagingData.products.length} Mẫu)
+                    Sản Phẩm Gợi Ý Cho Không Gian Này ({stagingData.products.length} Mẫu)
                   </h3>
                 </div>
                 <span className="text-xs text-espresso/60">
@@ -609,9 +711,6 @@ export default function VisualSearchModal() {
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
                         className="object-cover"
                       />
-                      <span className="absolute top-1 right-1 bg-charcoal/80 text-gold text-[9px] px-1.5 py-0.5 rounded font-mono">
-                        {prod.similarity_score}%
-                      </span>
                     </div>
                     <h4 className="text-xs font-serif font-bold text-espresso truncate">
                       {prod.name}

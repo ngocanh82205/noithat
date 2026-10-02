@@ -144,7 +144,8 @@ Route::prefix('shipping')->group(function () {
 // --- 12. Visual Search & AI Style Matching ---
 Route::prefix('visual-search')->group(function () {
     Route::get('/', [VisualSearchController::class, 'search']);
-    Route::post('/', [VisualSearchController::class, 'search']);
+    // Có thể gửi ảnh cho Gemini -> giới hạn tần suất để bảo vệ hạn mức API miễn phí
+    Route::post('/', [VisualSearchController::class, 'search'])->middleware('throttle:15,1');
     Route::post('/analyze-room', [VisualSearchController::class, 'analyzeRoom']);
 });
 

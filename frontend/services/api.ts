@@ -1061,18 +1061,27 @@ export type VisualSearchProductMatch = {
   category_name: string;
   image: string;
   material: string;
-  similarity_score: number;
+  // Không còn dùng "% khớp" bịa; giữ field cho tương thích (luôn null)
+  similarity_score: number | null;
   dimensions?: string;
   match_reason: string;
   default_scale?: number;
 };
 
 export type SpatialStagingResult = {
+  // gemini_vision: AI đã nhìn ảnh | gemini_text: AI đọc mô tả | rule_based: gợi ý theo từ khoá
+  engine: "gemini_vision" | "gemini_text" | "rule_based";
+  engine_label: string;
+  image_analyzed: boolean;
   detected_room_type: string;
+  style?: string | null;
+  summary?: string | null;
   estimated_area: string;
   recommended_type: string;
   lighting_analysis: string;
   color_palette: string[];
+  palette?: { name: string; hex: string }[];
+  placement?: { x: number; y: number; description?: string } | null;
   matches_count: number;
   products: VisualSearchProductMatch[];
 };
@@ -1122,6 +1131,7 @@ export const spatialRoomService = {
     style?: string;
     category?: string;
     room_type?: string;
+    image_base64?: string; // data URL JPEG đã thu nhỏ -> backend gửi cho Gemini Vision
   }): Promise<ApiResponse<SpatialStagingResult>> {
     const result = await request<SpatialStagingResult>("/visual-search", {
       method: "POST",
