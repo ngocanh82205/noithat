@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Render / reverse proxy kết thúc HTTPS phía trước: tin X-Forwarded-* để asset()/url() sinh https://
+        // (nếu không, link ảnh upload thành http:// và bị trình duyệt chặn trên trang https).
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES', '*'));
+
         $middleware->alias([
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
         ]);

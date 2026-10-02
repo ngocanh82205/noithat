@@ -224,7 +224,7 @@ export default function AccountPage() {
   const handleCopyAffiliate = () => {
     const link =
       affiliateStats?.referral_link ||
-      `http://localhost:3000?ref=${user?.referral_code || "GS-VIP"}`;
+      `${typeof window !== "undefined" ? window.location.origin : ""}/?ref=${user?.referral_code || "GS-VIP"}`;
     navigator.clipboard.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -666,7 +666,7 @@ export default function AccountPage() {
                               readOnly
                               value={
                                 affiliateStats?.referral_link ||
-                                `http://localhost:3000?ref=${user?.referral_code || "GS-VIP"}`
+                                `${typeof window !== "undefined" ? window.location.origin : ""}/?ref=${user?.referral_code || "GS-VIP"}`
                               }
                               className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-xs font-mono text-gray-700 outline-none select-all"
                             />

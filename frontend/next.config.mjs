@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Bản deploy (Dockerfile ở thư mục gốc) build dạng standalone để image gọn; chạy local không đổi.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   eslint: {
     ignoreDuringBuilds: true,
   },

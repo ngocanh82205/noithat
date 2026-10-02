@@ -19,7 +19,7 @@ import SiteChrome from "@/components/SiteChrome";
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { loginUser } = useStore();
+  const { loginUser, openAuth } = useStore();
   const { showToast } = useToast();
   const nextRouter = useNextRouter();
 
@@ -134,12 +134,20 @@ export default function LoginPage() {
                   />
                   <span className="text-xs text-espresso/70">Ghi nhớ đăng nhập</span>
                 </label>
-                <Link
-                  href="/forgot-password"
+                {/* Chưa có chức năng đặt lại mật khẩu -> hướng dẫn liên hệ thay vì link tới trang không tồn tại */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    showToast({
+                      type: "info",
+                      title: "Quên mật khẩu",
+                      message: "Vui lòng liên hệ CSKH GS Luxury (qua mục Tư Vấn hoặc AI Concierge) để được cấp lại mật khẩu.",
+                    })
+                  }
                   className="text-xs text-gold hover:underline"
                 >
                   Quên mật khẩu?
-                </Link>
+                </button>
               </div>
 
               <button
@@ -167,9 +175,13 @@ export default function LoginPage() {
             <div className="mt-8 pt-6 border-t border-espresso/10 text-center">
               <p className="text-xs text-espresso/60">
                 Chưa có tài khoản?{" "}
-                <Link href="/register" className="text-gold hover:underline font-medium">
+                <button
+                  type="button"
+                  onClick={() => openAuth("register")}
+                  className="text-gold hover:underline font-medium"
+                >
                   Đăng ký ngay
-                </Link>
+                </button>
               </p>
             </div>
 

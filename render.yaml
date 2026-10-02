@@ -1,0 +1,42 @@
+# Render Blueprint — GS Luxury (1 web service + 1 PostgreSQL, đều gói Free)
+# Cách dùng: Render Dashboard -> New -> Blueprint -> chọn repo này -> Apply.
+# Web (Next.js) và API (Laravel) chạy chung 1 container, cùng 1 domain:
+#   https://<ten-dich-vu>.onrender.com        -> website
+#   https://<ten-dich-vu>.onrender.com/admin  -> trang quản trị
+#   https://<ten-dich-vu>.onrender.com/api    -> REST API
+
+services:
+  - type: web
+    name: gs-luxury
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /up
+    autoDeploy: true
+    envVars:
+      # Render tự sinh chuỗi bí mật; entrypoint chuyển thành khóa Laravel hợp lệ
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_NAME
+        value: GS Luxury
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: gs-luxury-db
+          property: connectionString
+      # Nạp dữ liệu mẫu (sản phẩm, admin, đơn mẫu) ở lần chạy đầu; các lần sau tự bỏ qua
+      - key: RUN_SEEDERS
+        value: "true"
+      # Tuỳ chọn: thêm GEMINI_API_KEY trong tab Environment nếu muốn AI dùng Gemini thật
+
+databases:
+  - name: gs-luxury-db
+    plan: free
+    region: singapore
+    databaseName: gs_luxury
+    user: gs_luxury
+    # Chỉ cho phép kết nối nội bộ từ các dịch vụ Render
+    ipAllowList: []

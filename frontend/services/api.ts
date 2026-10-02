@@ -1,6 +1,12 @@
 // services/api.ts — GS Luxury Backend API Service Client
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+// - Trình duyệt: NEXT_PUBLIC_API_URL (khi deploy chung 1 domain là "/api").
+// - Server Next.js (trang render phía server): INTERNAL_API_URL nếu có, vì URL tương đối "/api"
+//   không dùng được trong Node; khi chạy local cả hai đều mặc định http://127.0.0.1:8000/api.
+const API_BASE_URL =
+  (typeof window === "undefined" ? process.env.INTERNAL_API_URL : undefined) ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000/api";
 
 export type ApiResponse<T> = {
   success: boolean;

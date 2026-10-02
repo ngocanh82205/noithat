@@ -114,6 +114,25 @@ php artisan test
 
 ---
 
+## 2b. Deploy lên Render (không cần chạy local)
+
+Repo có sẵn `render.yaml` (Blueprint) + `Dockerfile` ở thư mục gốc: **1 web service** chạy chung website Next.js và API Laravel trên cùng một domain, cộng **1 database PostgreSQL** — đều dùng gói Free.
+
+1. Đăng nhập [render.com](https://render.com) bằng tài khoản GitHub có quyền với repo này.
+2. **New → Blueprint** → chọn repo → chọn **branch** chứa code (vd. `main`) → **Apply**.
+3. Đợi build xong (lần đầu ~10–15 phút). Lần chạy đầu tự tạo bảng và nạp dữ liệu mẫu.
+4. Mở `https://<tên-dịch-vụ>.onrender.com` (xem link ở trang dịch vụ `gs-luxury`).
+   - Website: `/` · Quản trị: `/admin` · API: `/api`
+   - Tài khoản: xem mục 4 bên dưới.
+
+Lưu ý gói Free của Render:
+- Dịch vụ **ngủ sau ~15 phút** không có truy cập; lần mở đầu tiên sau đó mất khoảng 1 phút để khởi động lại → mở trang trước khi demo.
+- Database Free có **thời hạn** (Render gửi email nhắc trước khi hết hạn); ảnh admin tải lên lưu trên đĩa tạm của container nên **mất khi deploy lại** — ảnh sản phẩm mẫu không bị ảnh hưởng.
+- Không gọi được GHN thì trang thanh toán tự chuyển sang nhập địa chỉ tay + biểu phí ship mặc định.
+- MoMo / VNPAY dùng tài khoản **sandbox** có sẵn; URL quay về tự lấy theo domain Render.
+
+---
+
 ## 3. Danh sách RESTful API Endpoints (Backend)
 
 | Method | Endpoint | Mô tả chức năng |

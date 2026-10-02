@@ -259,7 +259,7 @@ export default function AffiliateModal() {
                         <input
                           type="text"
                           readOnly
-                          value={stats?.referral_link || `http://localhost:3000?ref=${user?.referral_code || "GS-VIP"}`}
+                          value={stats?.referral_link || `${typeof window !== "undefined" ? window.location.origin : ""}/?ref=${user?.referral_code || "GS-VIP"}`}
                           className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-gray-600 outline-none select-all"
                         />
                         <button
