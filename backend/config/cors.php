@@ -19,7 +19,11 @@ return [
 
     'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000')],
 
-    'allowed_origins_patterns' => [],
+    // Khi chạy local: chấp nhận cả http://localhost:<port> lẫn http://127.0.0.1:<port>
+    // (mở storefront bằng 127.0.0.1 hoặc đổi cổng dev không bị chặn CORS). Production chỉ dùng FRONTEND_URL.
+    'allowed_origins_patterns' => env('APP_ENV') === 'local'
+        ? ['#^http://(localhost|127\.0\.0\.1)(:\d+)?$#']
+        : [],
 
     'allowed_headers' => ['*'],
 
