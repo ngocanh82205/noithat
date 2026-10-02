@@ -31,8 +31,8 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('subtitle')->nullable();
-            $table->timestamp('start_time');
-            $table->timestamp('end_time');
+            $table->dateTime('start_time');
+            $table->dateTime('end_time');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
