@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminOrderController extends Controller
 {
@@ -105,14 +106,24 @@ class AdminOrderController extends Controller
             ]);
         }
 
-        $order->order_status = $newStatus;
-        if (!empty($validated['payment_status'])) {
-            $order->payment_status = $validated['payment_status'];
-        }
-        if (!empty($validated['notes'])) {
-            $order->notes = $order->notes . "\n" . $validated['notes'];
-        }
-        $order->save();
+        DB::transaction(function () use ($order, $oldStatus, $newStatus, $validated) {
+            $order->order_status = $newStatus;
+            if (!empty($validated['payment_status'])) {
+                $order->payment_status = $validated['payment_status'];
+            }
+            if (!empty($validated['notes'])) {
+                $order->notes = $order->notes . "\n" . $validated['notes'];
+            }
+
+            // Thưởng tích lũy & hoa hồng gắn với vòng đời đơn hàng
+            if ($newStatus === Order::STATUS_COMPLETED && $oldStatus !== Order::STATUS_COMPLETED) {
+                $order->applyCompletionRewards();
+            } elseif ($newStatus === Order::STATUS_REFUNDED && $oldStatus !== Order::STATUS_REFUNDED) {
+                $order->revokeCompletionRewards();
+            }
+
+            $order->save();
+        });
 
         return response()->json([
             'success' => true,

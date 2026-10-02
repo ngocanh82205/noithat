@@ -43,6 +43,12 @@ class VoucherController extends Controller
 
         $voucher = Voucher::where('code', $code)
             ->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('start_date')->orWhere('start_date', '<=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('end_date')->orWhere('end_date', '>=', now());
+            })
             ->first();
 
         if (!$voucher) {
@@ -59,8 +65,8 @@ class VoucherController extends Controller
             ], 400);
         }
 
-        // Check per-user/session usage limit
-        $user = Auth::user();
+        // Check per-user/session usage limit (public route: resolve the Sanctum token explicitly)
+        $user = auth('sanctum')->user();
         $sessionId = $request->header('X-Session-ID');
 
         if ($user) {

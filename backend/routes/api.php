@@ -116,7 +116,8 @@ Route::prefix('consultations')->group(function () {
 Route::prefix('vouchers')->group(function () {
     Route::get('/', [VoucherController::class, 'index']);
     Route::post('/apply', [VoucherController::class, 'apply']);
-    Route::post('/record-usage', [VoucherController::class, 'recordUsage']);
+    // Ghi nhận thủ công chỉ dành cho quản trị viên (OrderController đã tự ghi nhận khi đặt hàng)
+    Route::post('/record-usage', [VoucherController::class, 'recordUsage'])->middleware(['auth:sanctum', 'admin']);
 });
 
 // --- 9. Flash Sales & Deals ---
@@ -183,6 +184,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     // Voucher Management
     Route::get('/vouchers', [AdminVoucherController::class, 'index']);
     Route::post('/vouchers', [AdminVoucherController::class, 'store']);
+    Route::put('/vouchers/{id}', [AdminVoucherController::class, 'update']);
     Route::delete('/vouchers/{id}', [AdminVoucherController::class, 'destroy']);
 
     // Q&A Management & Replies

@@ -20,6 +20,9 @@ class Order extends Model
     public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_REFUNDED = 'refunded';
 
+    // Tích lũy: 1 GS Coin cho mỗi 100.000₫ giá trị thanh toán của đơn hoàn tất
+    public const LOYALTY_VND_PER_COIN = 100000;
+
     public const STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_PROCESSING,
@@ -49,6 +52,7 @@ class Order extends Model
         'discount_amount',
         'coins_used',
         'coins_discount',
+        'coins_earned',
         'total_amount',
         'payment_method',
         'payment_status',
@@ -77,6 +81,7 @@ class Order extends Model
         'discount_amount' => 'float',
         'coins_discount' => 'float',
         'coins_used' => 'integer',
+        'coins_earned' => 'integer',
         'total_amount' => 'float',
     ];
 
@@ -93,6 +98,48 @@ class Order extends Model
     public function canCancel(): bool
     {
         return in_array($this->order_status, [self::STATUS_PENDING, self::STATUS_PROCESSING, self::STATUS_CONFIRMED]);
+    }
+
+    public function loyaltyCoinsFor(): int
+    {
+        return (int) floor(max(0, (float) $this->total_amount) / self::LOYALTY_VND_PER_COIN);
+    }
+
+    /**
+     * Đơn hoàn tất: cộng GS Coins tích lũy cho khách và mở khóa hoa hồng Affiliate (pending -> approved).
+     * Idempotent nhờ cột coins_earned. Gọi trong transaction của nơi cập nhật trạng thái.
+     */
+    public function applyCompletionRewards(): void
+    {
+        if ($this->user_id && (int) $this->coins_earned === 0) {
+            $coins = $this->loyaltyCoinsFor();
+            if ($coins > 0) {
+                User::where('id', $this->user_id)->increment('coins', $coins);
+                $this->coins_earned = $coins;
+            }
+        }
+
+        AffiliateCommission::where('order_id', $this->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'approved']);
+    }
+
+    /**
+     * Đơn hoàn tiền: thu hồi GS Coins đã tích lũy (không để âm) và hủy hoa hồng chưa chi trả.
+     */
+    public function revokeCompletionRewards(): void
+    {
+        if ($this->user_id && (int) $this->coins_earned > 0) {
+            $user = User::where('id', $this->user_id)->lockForUpdate()->first();
+            if ($user) {
+                $user->decrement('coins', min((int) $user->coins, $this->coins_earned));
+            }
+            $this->coins_earned = 0;
+        }
+
+        AffiliateCommission::where('order_id', $this->id)
+            ->whereIn('status', ['pending', 'approved'])
+            ->update(['status' => 'cancelled']);
     }
 
     public function cancel(string $reason = ''): bool
@@ -128,7 +175,7 @@ class Order extends Model
 
             // Update affiliate commission status if exists
             \App\Models\AffiliateCommission::where('order_id', $this->id)
-                ->where('status', 'approved')
+                ->whereIn('status', ['pending', 'approved'])
                 ->update(['status' => 'cancelled']);
 
             $this->update([

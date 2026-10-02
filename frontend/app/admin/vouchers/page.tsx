@@ -10,6 +10,8 @@ import {
   Calendar,
   CheckCircle2,
   Percent,
+  Pause,
+  Play,
 } from "lucide-react";
 import { adminService, ApiVoucher } from "@/services/api";
 import { formatPrice } from "@/lib/products";
@@ -83,6 +85,24 @@ export default function AdminVouchersPage() {
       setFormError(err.message || "Lỗi khi tạo mã giảm giá");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  const handleToggleActive = async (voucher: ApiVoucher) => {
+    setTogglingId(voucher.id);
+    try {
+      const res = await adminService.updateVoucher(voucher.id, { is_active: !voucher.is_active });
+      if (res.success && res.data) {
+        setVouchers((prev) => prev.map((v) => (v.id === voucher.id ? res.data : v)));
+      } else {
+        alert(res.message || "Không thể cập nhật trạng thái voucher");
+      }
+    } catch (err: any) {
+      alert(err.message || "Không thể cập nhật trạng thái voucher");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -182,13 +202,23 @@ export default function AdminVouchersPage() {
                 <span className="text-[10px] text-beige/40">
                   Hạn: {new Date(v.end_date).toLocaleDateString("vi-VN")}
                 </span>
-                <button
-                  onClick={() => handleDelete(v.id)}
-                  className="p-1.5 text-beige/40 hover:text-red-400 transition-colors rounded"
-                  title="Xóa voucher"
-                >
-                  <Trash2 size={15} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleToggleActive(v)}
+                    disabled={togglingId === v.id}
+                    className="p-1.5 text-beige/40 hover:text-gold transition-colors rounded disabled:opacity-40"
+                    title={v.is_active ? "Tạm dừng voucher" : "Kích hoạt lại voucher"}
+                  >
+                    {v.is_active ? <Pause size={15} /> : <Play size={15} />}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(v.id)}
+                    className="p-1.5 text-beige/40 hover:text-red-400 transition-colors rounded"
+                    title="Xóa voucher"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

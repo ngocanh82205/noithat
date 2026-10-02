@@ -26,6 +26,10 @@ use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
+    // 1 GS Coin = 1.000₫, tối đa khấu trừ 20% giá trị tạm tính (đồng bộ với StoreContext ở frontend)
+    public const COIN_VALUE = 1000;
+    public const MAX_COINS_DISCOUNT_RATIO = 0.2;
+
     protected GhnController $ghnController;
 
     public function __construct(GhnController $ghnController)
@@ -259,6 +263,13 @@ class OrderController extends Controller
 
                 // Validate and calculate voucher discount server-side (min_order_amount check inside transaction)
                 if ($voucher) {
+                    // Re-check usage limit under a row lock to avoid overselling the voucher concurrently
+                    $voucher = Voucher::where('id', $voucher->id)->lockForUpdate()->first();
+                    if ($voucher->usage_limit > 0 && $voucher->used_count >= $voucher->usage_limit) {
+                        throw ValidationException::withMessages([
+                            'voucher_code' => 'Mã giảm giá đã hết lượt sử dụng.',
+                        ]);
+                    }
                     if ($subtotal < $voucher->min_order_amount) {
                         throw ValidationException::withMessages([
                             'voucher_code' => 'Đơn hàng tối thiểu ' . number_format($voucher->min_order_amount, 0, ',', '.') . '₫ mới có thể áp dụng mã này.',
@@ -267,8 +278,15 @@ class OrderController extends Controller
                     $discount = $voucher->calculateDiscount($subtotal);
                 }
 
-                $coinsUsed = (int) $request->input('coins_used', 0);
-                $coinsDiscount = $coinsUsed * 1000; // 1 coin = 1,000 VND
+                // Coins: clamp to the user's real balance (row locked) and to 20% of subtotal,
+                // so a crafted request cannot claim more coins than owned.
+                $coinsUsed = max(0, (int) $request->input('coins_used', 0));
+                if ($coinsUsed > 0) {
+                    $lockedUser = \App\Models\User::where('id', $authUser->id)->lockForUpdate()->first();
+                    $maxCoinsBySubtotal = (int) floor(($subtotal * self::MAX_COINS_DISCOUNT_RATIO) / self::COIN_VALUE);
+                    $coinsUsed = min($coinsUsed, (int) ($lockedUser?->coins ?? 0), $maxCoinsBySubtotal);
+                }
+                $coinsDiscount = $coinsUsed * self::COIN_VALUE;
 
                 $totalAmount = max(0, $subtotal + $shippingFee - $discount - $coinsDiscount);
 
@@ -306,9 +324,9 @@ class OrderController extends Controller
                     OrderItem::create($orderItem);
                 }
 
-                // Deduct coins from user if used
+                // Deduct coins from user if used (already clamped to balance above)
                 if ($authUser && $coinsUsed > 0) {
-                    $authUser->decrement('coins', min($authUser->coins, $coinsUsed));
+                    \App\Models\User::where('id', $authUser->id)->decrement('coins', $coinsUsed);
                 }
 
                 // Check Affiliate Referral
@@ -323,7 +341,8 @@ class OrderController extends Controller
                             'order_amount' => $totalAmount,
                             'commission_rate' => 5.0,
                             'commission_amount' => $commissionAmount,
-                            'status' => 'approved',
+                            // Chỉ chuyển "approved" (được rút) khi đơn hàng hoàn tất — xem Order::applyCompletionRewards()
+                            'status' => 'pending',
                         ]);
                     }
                 }

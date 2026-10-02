@@ -155,6 +155,9 @@ export type ApiOrder = {
   discount_amount: number;
   subtotal: number;
   total_amount: number;
+  coins_used?: number;
+  coins_discount?: number;
+  coins_earned?: number;
   payment_method: "cod" | "bank_transfer" | "vnpay" | "momo";
   payment_status: "unpaid" | "paid" | "refunded";
   status: "pending" | "confirmed" | "shipping" | "completed" | "cancelled";
@@ -585,6 +588,14 @@ export const orderService = {
     const result = await request<ApiOrder[]>("/orders/my-orders", { cache: "no-store" });
     return result as ApiResponse<ApiOrder[]>;
   },
+
+  async cancelOrder(orderNumber: string, reason?: string): Promise<ApiResponse<ApiOrder>> {
+    const result = await request<ApiOrder>(`/orders/${encodeURIComponent(orderNumber)}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+    return result as ApiResponse<ApiOrder>;
+  },
 };
 
 // 6. Consultation Appointment
@@ -748,6 +759,14 @@ export const adminService = {
   async createVoucher(data: any): Promise<ApiResponse<ApiVoucher>> {
     const result = await request<ApiVoucher>("/admin/vouchers", {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+    return result as ApiResponse<ApiVoucher>;
+  },
+
+  async updateVoucher(id: number | string, data: Partial<ApiVoucher>): Promise<ApiResponse<ApiVoucher>> {
+    const result = await request<ApiVoucher>(`/admin/vouchers/${id}`, {
+      method: "PUT",
       body: JSON.stringify(data),
     });
     return result as ApiResponse<ApiVoucher>;

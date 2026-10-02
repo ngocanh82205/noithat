@@ -26,6 +26,8 @@ import {
   TrendingUp,
   ArrowRight,
   Coins,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 import SiteChrome from "@/components/SiteChrome";
 import { useStore } from "@/components/StoreContext";
@@ -57,6 +59,36 @@ export default function AccountPage() {
   >("orders");
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [cancellingOrder, setCancellingOrder] = useState<string | null>(null);
+
+  // Khách tự hủy đơn khi đơn còn ở trạng thái chờ / đang xử lý / đã xác nhận (đồng bộ với Order::canCancel)
+  const CANCELLABLE_STATUSES = ["pending", "processing", "confirmed"];
+
+  const handleCancelOrder = async (orderNumber: string) => {
+    const reason = window.prompt(
+      `Xác nhận hủy đơn ${orderNumber}? Vui lòng cho biết lý do (không bắt buộc):`,
+      ""
+    );
+    if (reason === null) return;
+
+    setCancellingOrder(orderNumber);
+    try {
+      const res = await orderService.cancelOrder(orderNumber, reason.trim() || undefined);
+      if (res.success && res.data) {
+        setOrders((prev) =>
+          prev.map((o) => (o.order_number === orderNumber ? { ...o, ...res.data, items: o.items } : o))
+        );
+        // Xu đã dùng được hoàn lại -> đồng bộ số dư
+        refreshProfile();
+      } else {
+        alert(res.message || "Không thể hủy đơn hàng. Vui lòng thử lại.");
+      }
+    } catch {
+      alert("Không thể hủy đơn hàng. Vui lòng thử lại.");
+    } finally {
+      setCancellingOrder(null);
+    }
+  };
 
   // Affiliate State
   const [affiliateStats, setAffiliateStats] = useState<AffiliateStats | null>(null);
@@ -216,6 +248,18 @@ export default function AccountPage() {
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-yellow-100 text-yellow-800 text-[11px] font-medium tracking-wide">
             <Package size={13} /> Đã Tiếp Nhận
+          </span>
+        );
+      case "cancelled":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-800 text-[11px] font-medium tracking-wide">
+            <XCircle size={13} /> Đã Hủy
+          </span>
+        );
+      case "refunded":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-200 text-gray-700 text-[11px] font-medium tracking-wide">
+            <RotateCcw size={13} /> Đã Hoàn Tiền
           </span>
         );
       default:
@@ -435,6 +479,15 @@ export default function AccountPage() {
 
                               <div className="flex items-center gap-3">
                                 {getStatusBadge(order.order_status)}
+                                {CANCELLABLE_STATUSES.includes(order.order_status) && (
+                                  <button
+                                    onClick={() => handleCancelOrder(order.order_number)}
+                                    disabled={cancellingOrder === order.order_number}
+                                    className="text-xs text-red-600/80 hover:text-red-700 hover:underline font-medium disabled:opacity-50"
+                                  >
+                                    {cancellingOrder === order.order_number ? "Đang hủy..." : "Hủy Đơn"}
+                                  </button>
+                                )}
                                 <Link
                                   href={`/order-success/${order.order_number}`}
                                   className="inline-flex items-center gap-1 text-xs text-gold hover:underline font-medium"
@@ -492,6 +545,11 @@ export default function AccountPage() {
                                 <span className="font-serif text-base text-gold font-semibold ml-1">
                                   {formatPrice(order.total_amount)}
                                 </span>
+                                {order.coins_earned > 0 && (
+                                  <span className="block text-[11px] text-amber-700 mt-0.5">
+                                    +{order.coins_earned.toLocaleString("vi-VN")} GS Coins tích lũy
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -542,7 +600,14 @@ export default function AccountPage() {
                     </div>
 
                     {/* How to earn & spend */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-white/80 p-5 rounded-xl border border-espresso/10 space-y-2">
+                        <span className="text-2xl">📦</span>
+                        <h4 className="text-sm font-bold text-espresso">Tích Lũy Khi Mua Hàng</h4>
+                        <p className="text-xs text-espresso/60">
+                          Nhận 1 GS Coin cho mỗi 100.000₫ thanh toán, tự động cộng khi đơn hàng hoàn tất.
+                        </p>
+                      </div>
                       <div className="bg-white/80 p-5 rounded-xl border border-espresso/10 space-y-2">
                         <span className="text-2xl">🎡</span>
                         <h4 className="text-sm font-bold text-espresso">Vòng Quay Hàng Ngày</h4>

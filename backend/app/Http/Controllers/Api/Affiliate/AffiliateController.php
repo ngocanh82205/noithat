@@ -73,6 +73,19 @@ class AffiliateController extends Controller
         ]);
 
         $user = $request->user();
+
+        // Khi duyệt, toàn bộ hoa hồng "approved" được chuyển sang "paid", nên chỉ cho phép 1 yêu cầu chờ duyệt
+        // tại một thời điểm để tránh gửi nhiều yêu cầu vượt quá số dư thực tế.
+        $hasPendingRequest = WithdrawalRequest::where('user_id', $user->id)
+            ->where('status', 'pending')
+            ->exists();
+        if ($hasPendingRequest) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn đang có một yêu cầu rút tiền chờ duyệt. Vui lòng đợi ban quản trị xử lý trước khi gửi yêu cầu mới.',
+            ], 422);
+        }
+
         $availableBalance = AffiliateCommission::where('user_id', $user->id)
             ->where('status', 'approved')
             ->sum('commission_amount');
